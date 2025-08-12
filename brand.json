@@ -1,14 +1,25 @@
 {
-  "name": "永傳家族辦公室",
-  "primary_color": "#0F766E",
-  "accent_color": "#F59E0B",
-  "text_color": "#222222",
-  "logo_path": "assets/logo.png",
-  "contact": {
-    "company": "永傳家族辦公室",
-    "address": "台北市中山區南京東路二段101號9樓",
-    "email": "123@gracefo.com",
-    "website": "https://gracefo.com",
-    "booking_url": "https://gracefo.com/booking"
-  }
+  "brand_name": "永傳家族辦公室",
+  "slogan": "傳承您的影響力",
+  "brand_quotes": [
+    "保險像咖啡杯的把手——用20%的保險，守護100%的資產。",
+    "財富是工具，傳承是使命；把愛與價值留得更久。",
+    "先為風險預留位置，後面的選擇才會更從容。"
+  ],
+  "hashtags": [
+    "#永傳家族辦公室",
+    "#影響力傳承計畫",
+    "#家族傳承",
+    "#企業接班",
+    "#保單策略",
+    "#遺產稅",
+    "#信託規劃"
+  ],
+  "persona_keywords": {
+    "Grace": ["溫暖", "專業", "清楚", "不誇張", "可落地"],
+    "商周": ["策略", "趨勢", "紀律", "數據", "長期主義"],
+    "今周刊": ["財經脈絡", "務實", "方法論"],
+    "TED": ["故事", "洞見", "行動呼籲"]
+  },
+  "default_brand_signature": "永傳家族辦公室｜影響力傳承計畫"
 }
