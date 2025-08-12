@@ -1,26 +1,23 @@
 # pages/0b_AI_Copilot_Pro.py
-# 🪄 AI 行銷助手 Pro（免 API）＋ brand.json
+# 🪄 AI 行銷助手 Pro（免 API）＋ brand.json ＋ 一鍵匯出 PDF
 # 讀取根目錄 brand.json：brand_quotes / hashtags / persona_keywords / default_brand_signature
 import streamlit as st
 from datetime import date
 import os, json, random
+from io import BytesIO
 
-st.set_page_config(page_title="AI 行銷助手 Pro（品牌金句＋Hashtag）", page_icon="🪄", layout="wide")
+st.set_page_config(page_title="AI 行銷助手 Pro（品牌金句＋Hashtag＋PDF）", page_icon="🪄", layout="wide")
 st.title("🪄 AI 行銷助手 Pro")
-st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。自動讀取 brand.json 的金句與 Hashtag。")
+st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。自動讀取 brand.json 的金句與 Hashtag，並支援 PDF 匯出。")
 
 # -----------------------------
 # 讀取 brand.json（根目錄）
 # -----------------------------
 def load_brand_config():
-    # 尋找專案根目錄的 brand.json
-    # 這個檔案應與 app.py 同層（repo 根）
     try_paths = []
-    # 1) 以此檔案所在路徑向上兩層嘗試
     this_dir = os.path.dirname(__file__)
     try_paths.append(os.path.abspath(os.path.join(this_dir, "..", "brand.json")))
     try_paths.append(os.path.abspath(os.path.join(this_dir, "..", "..", "brand.json")))
-    # 2) 以當前工作目錄嘗試（Streamlit 通常為 repo 根）
     try_paths.append(os.path.abspath(os.path.join(os.getcwd(), "brand.json")))
     for p in try_paths:
         if os.path.exists(p):
@@ -29,24 +26,73 @@ def load_brand_config():
                     return json.load(f)
             except Exception:
                 pass
-    # 安全預設
     return {
         "brand_name": "永傳家族辦公室",
         "slogan": "傳承您的影響力",
-        "brand_quotes": [
-            "財富是工具，傳承是使命；把愛與價值留得更久。"
-        ],
+        "brand_quotes": ["財富是工具，傳承是使命；把愛與價值留得更久。"],
         "hashtags": ["#家族傳承", "#保單策略"],
-        "persona_keywords": {
-            "Grace": ["溫暖", "專業", "清楚", "可落地"],
-            "商周": ["策略", "趨勢", "紀律"],
-            "今周刊": ["財經脈絡", "務實", "方法論"],
-            "TED": ["故事", "洞見", "行動呼籲"]
-        },
         "default_brand_signature": "永傳家族辦公室｜影響力傳承計畫"
     }
 
 CFG = load_brand_config()
+
+# -----------------------------
+# PDF 輔助：字型／樣式／抬頭
+# -----------------------------
+def _find_font():
+    candidates = [
+        os.path.join(os.getcwd(), "NotoSansTC-Regular.ttf"),
+        os.path.join(os.getcwd(), "pages", "NotoSansTC-Regular.ttf"),
+        "NotoSansTC-Regular.ttf",
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return None
+
+def _pdf_styles():
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib import colors
+
+    font_path = _find_font()
+    font_name = "Helvetica"
+    if font_path:
+        try:
+            pdfmetrics.registerFont(TTFont("NotoSansTC", font_path))
+            font_name = "NotoSansTC"
+        except Exception:
+            pass
+
+    styles = getSampleStyleSheet()
+    styleN = ParagraphStyle(name="NormalTC", parent=styles["Normal"], fontName=font_name, fontSize=12, leading=16)
+    styleH = ParagraphStyle(name="HeadingTC", parent=styles["Heading2"], fontName=font_name, fontSize=14, leading=18, spaceAfter=10)
+    styleC = ParagraphStyle(name="CenterTC", parent=styles["Normal"], fontName=font_name, fontSize=10, alignment=TA_CENTER)
+    styleTitle = ParagraphStyle(name="BrandTitle", parent=styles["Title"], fontName=font_name, fontSize=20, leading=24, spaceAfter=4)
+    styleSlogan = ParagraphStyle(name="BrandSlogan", parent=styles["Normal"], fontName=font_name, fontSize=11, textColor=colors.grey)
+    return styleN, styleH, styleC, styleTitle, styleSlogan
+
+def _brand_header(story, styleTitle, styleSlogan, styleC):
+    from reportlab.platypus import Paragraph, Spacer, Image
+    from reportlab.lib.units import mm
+    brand_name = CFG.get("brand_name", "永傳家族辦公室")
+    slogan = CFG.get("slogan", "傳承您的影響力")
+
+    # 可選 logo.png/jpg（若沒有就跳過）
+    logo = None
+    for name in ["logo.png", "logo.jpg", "logo.jpeg"]:
+        p = os.path.join(os.getcwd(), name)
+        if os.path.exists(p):
+            logo = p
+            break
+    if logo:
+        story.append(Image(logo, width=80*mm, height=20*mm))
+        story.append(Spacer(1, 6))
+    story.append(Paragraph(brand_name, styleTitle))
+    story.append(Paragraph(slogan, styleSlogan))
+    story.append(Paragraph(f"產出日期：{date.today().isoformat()}", styleC))
 
 # -----------------------------
 # 控制面板
@@ -62,7 +108,7 @@ with st.form("mk_pro"):
         key_points = st.text_area("📌 關鍵重點（每行一點）", "1. 有數據與圖像化工具\n2. 可先做風險盤點\n3. 提供預約諮詢")
         cta = st.text_input("👉 CTA 呼籲動作", "私訊我，預約 30 分鐘諮詢")
     with c3:
-        brand = st.text_input("🏷️ 品牌簽名（可留空）", CFG.get("default_brand_signature", ""))
+        brand_sig = st.text_input("🏷️ 品牌簽名（可留空）", CFG.get("default_brand_signature", ""))
         max_len = st.slider("✂️ 建議字數上限", 80, 500, 220, step=10)
         with_emoji = st.toggle("🙂 適量加入 Emoji", value=True)
 
@@ -177,8 +223,10 @@ def gen_opening(aud, topic, pts, cfg, use_quote):
     return "\n".join(lines)
 
 # -----------------------------
-# 產出流程
+# 產出流程 + PDF 匯出
 # -----------------------------
+OUT_TEXT = ""  # 暫存輸出，給 PDF 用
+
 if submitted:
     pts = bullets(key_points)
 
@@ -187,7 +235,7 @@ if submitted:
         topic, pts, cta = apply_preset(preset, topic, pts, cta)
 
     if channel == "Facebook 貼文":
-        out = gen_fb(audience, topic, pts, cta, brand, CFG, use_quote, use_hashtags)
+        out = gen_fb(audience, topic, pts, cta, brand_sig, CFG, use_quote, use_hashtags)
     elif channel == "LINE 私訊":
         out = gen_line(audience, topic, pts, cta, CFG, use_quote)
     else:
@@ -198,9 +246,47 @@ if submitted:
     # 字數控制
     out = limit_length(out, max_len)
 
+    OUT_TEXT = out
     st.markdown("### ✍️ 產出結果")
     st.code(out, language="markdown")
     st.download_button("下載為 .txt", data=out, file_name=f"mkPRO_{date.today()}.txt")
 
+# ---- PDF 生成（使用 reportlab）----
+def build_pdf_from_text(text: str, title: str = "行銷稿件"):
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+
+    styleN, styleH, styleC, styleTitle, styleSlogan = _pdf_styles()
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=36, bottomMargin=30)
+    story = []
+    _brand_header(story, styleTitle, styleSlogan, styleC)
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(title, styleH))
+    # 將使用者的文本逐段放入（保留換行）
+    for para in text.split("\n"):
+        if para.strip() == "":
+            story.append(Spacer(1, 6))
+        else:
+            story.append(Paragraph(para, styleN))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
 st.markdown("---")
-st.caption("提示：只要修改根目錄 brand.json，即可更新金句、Hashtag 與預設品牌簽名。")
+st.subheader("🧾 下載 PDF")
+if OUT_TEXT:
+    pdf_buf = build_pdf_from_text(OUT_TEXT, title=f"{channel}｜{topic}")
+    st.download_button(
+        "下載 PDF",
+        data=pdf_buf.getvalue(),
+        file_name=f"mkPRO_{date.today().isoformat()}.pdf",
+        mime="application/pdf",
+    )
+else:
+    st.info("請先產生內容，再下載 PDF。")
+
+st.caption("提示：PDF 會自動套用 brand.json 的品牌抬頭與你上傳的 NotoSansTC 字型。")
