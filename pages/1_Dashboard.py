@@ -5,7 +5,7 @@ import sys, pathlib
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 import streamlit as st
-from _nav_import import goto, goto_with_params
+from nav_shim import goto, goto_with_params
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

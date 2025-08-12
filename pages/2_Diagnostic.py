@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # pages/2_Diagnostic.py
 # 遺產稅診斷（單位：萬元）— 計算後可建立案件並跳到結果頁（用 goto）
 
@@ -5,7 +8,7 @@ import uuid
 from datetime import datetime
 from math import inf
 import streamlit as st
-from _nav_import import goto
+from nav_shim import goto
 
 st.set_page_config(page_title="遺產稅診斷", page_icon="💡", layout="wide")
 st.title("📊 遺產稅診斷（單位：萬元）")

@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # pages/Login.py
 # 顧問登入（Email OTP）— 已登入自動跳轉
 # - 白名單驗證（secrets.ADVISORS）
@@ -9,7 +12,7 @@ import time
 import random
 from datetime import datetime, timedelta
 import streamlit as st
-from _nav_import import goto
+from nav_shim import goto
 
 st.set_page_config(page_title="顧問登入（Email OTP）", page_icon="🔒", layout="centered")
 st.title("🔐 顧問登入（Email OTP）")

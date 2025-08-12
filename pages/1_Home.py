@@ -1,9 +1,12 @@
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # pages/1_Home.py
 # 首頁 Home（共用 goto 跳頁）
 
 from datetime import datetime, timezone, timedelta
 import streamlit as st
-from _nav_import import goto, goto_with_params
+from nav_shim import goto, goto_with_params
 
 st.set_page_config(page_title="首頁 Home", page_icon="🏠", layout="wide")
 TZ = timezone(timedelta(hours=8))

@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # pages/7_Events_Admin.py
 # 事件儀表板（依權限）— tz-naive 修正、缺欄位安全處理
 
