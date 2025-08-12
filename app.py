@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 import streamlit as st
 
 st.set_page_config(page_title="影響力平台", page_icon="✨", layout="wide")

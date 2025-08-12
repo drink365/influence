@@ -1,5 +1,5 @@
 import streamlit as st
-from src.utils.nav import goto
+from _nav_import import goto
 
 st.set_page_config(page_title="顧問工具庫｜influence9", page_icon="🧰", layout="wide")
 st.title("🧰 顧問工具庫")

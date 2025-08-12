@@ -9,7 +9,7 @@ import time
 import random
 from datetime import datetime, timedelta
 import streamlit as st
-from src.utils.nav import goto
+from _nav_import import goto
 
 st.set_page_config(page_title="顧問登入（Email OTP）", page_icon="🔒", layout="centered")
 st.title("🔐 顧問登入（Email OTP）")

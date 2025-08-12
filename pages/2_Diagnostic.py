@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from math import inf
 import streamlit as st
-from src.utils.nav import goto
+from _nav_import import goto
 
 st.set_page_config(page_title="遺產稅診斷", page_icon="💡", layout="wide")
 st.title("📊 遺產稅診斷（單位：萬元）")
