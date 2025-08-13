@@ -1,5 +1,5 @@
 # pages/Tools_InsuranceStrategy.py
-# 家族保單策略建議（英文檔名＋中文頁面；畫面統一以『萬元（TWD）』，USD 顯示等值）
+# 保單策略建議（英文檔名＋中文頁面；畫面統一以『萬元（TWD）』，USD 顯示等值）
 from __future__ import annotations
 
 import streamlit as st
@@ -47,7 +47,7 @@ def _pdf_from_results(
     main_budget_text = _fmt_budget_display(budget_wan, currency)
     lines: List[str] = []
     lines += [
-        "家族保單策略建議（摘要）",
+        "保單策略建議（摘要）",
         "",
         f"年齡：{age}",
         f"性別：{gender}",
@@ -74,16 +74,16 @@ def _pdf_from_results(
 
     pdf_buf = generate_pdf(
         content="\n".join(lines),
-        title="家族保單策略建議",
+        title="保單策略建議",
         logo_path="logo.png",
         footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
     )
     return pdf_buf.getvalue()
 
 # ---------- 介面 ----------
-st.set_page_config(page_title="家族保單策略建議", page_icon="📦", layout="wide")
+st.set_page_config(page_title="保單策略建議", page_icon="📦", layout="wide")
 
-st.markdown("## 📦 家族保單策略建議")
+st.markdown("## 📦 保單策略建議")
 st.caption("依您的家庭目標與預算，**即時產出專屬策略與說明**，協助預留稅源、守護家族現金流。")
 st.caption("畫面一律以 **『萬元（TWD）』** 顯示；若選 USD，會同時顯示等值新台幣。")
 
@@ -163,7 +163,7 @@ colA, colB = st.columns(2)
 
 # .txt 內容
 txt_lines = [
-    f"# 家族保單策略建議（{tier_text}）",
+    f"# 保單策略建議（{tier_text}）",
     "",
     f"- 年齡：{int(age)}",
     f"- 性別：{gender}",
@@ -188,7 +188,7 @@ with colA:
     st.download_button(
         "下載 .txt（萬元）",
         data=txt_content,
-        file_name="家族保單策略建議_萬元.txt",
+        file_name="保單策略建議_萬元.txt",
         mime="text/plain",
     )
 
@@ -199,7 +199,7 @@ with colB:
     st.download_button(
         "下載 PDF（萬元）",
         data=pdf_bytes,
-        file_name="家族保單策略建議_萬元.pdf",
+        file_name="保單策略建議_萬元.pdf",
         mime="application/pdf",
     )
 
