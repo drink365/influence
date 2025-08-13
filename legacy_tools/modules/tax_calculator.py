@@ -1,38 +1,33 @@
-from typing import Tuple, List
-from modules.tax_constants import TaxConstants
+# legacy_tools/modules/tax_calculator.py
+"""
+遺產稅計算模組
+改用相對匯入，避免 ModuleNotFoundError
+"""
 
-class EstateTaxCalculator:
-    """遺產稅計算器"""
+from .tax_constants import TaxConstants
 
-    def __init__(self, constants: TaxConstants):
-        self.constants = constants
+class TaxCalculator:
+    """遺產稅計算工具"""
 
-    def compute_deductions(self, spouse: bool, adult_children: int, other_dependents: int,
-                           disabled_people: int, parents: int) -> float:
-        """計算總扣除額"""
-        spouse_deduction = self.constants.SPOUSE_DEDUCTION_VALUE if spouse else 0
-        total_deductions = (
-            spouse_deduction +
-            self.constants.FUNERAL_EXPENSE +
-            (disabled_people * self.constants.DISABLED_DEDUCTION) +
-            (adult_children * self.constants.ADULT_CHILD_DEDUCTION) +
-            (other_dependents * self.constants.OTHER_DEPENDENTS_DEDUCTION) +
-            (parents * self.constants.PARENTS_DEDUCTION)
-        )
-        return total_deductions
+    @staticmethod
+    def calculate_inheritance_tax(total_assets, debts, exemptions):
+        """
+        計算遺產稅應納稅額
+        total_assets: 總資產金額
+        debts: 債務金額
+        exemptions: 免稅額
+        """
+        taxable_amount = total_assets - debts - exemptions
+        if taxable_amount <= 0:
+            return 0
 
-    def calculate_estate_tax(self, total_assets: float, spouse: bool, adult_children: int,
-                             other_dependents: int, disabled_people: int, parents: int) -> Tuple[float, float, float]:
-        """計算遺產稅"""
-        deductions = self.compute_deductions(spouse, adult_children, other_dependents, disabled_people, parents)
-        if total_assets < self.constants.EXEMPT_AMOUNT + deductions:
-            return 0, 0, deductions
-        taxable_amount = max(0, total_assets - self.constants.EXEMPT_AMOUNT - deductions)
-        tax_due = 0.0
-        previous_bracket = 0
-        for bracket, rate in self.constants.TAX_BRACKETS:
-            if taxable_amount > previous_bracket:
-                taxable_at_rate = min(taxable_amount, bracket) - previous_bracket
-                tax_due += taxable_at_rate * rate
-                previous_bracket = bracket
-        return taxable_amount, round(tax_due, 0), deductions
+        # 使用稅率級距計算
+        tax_due = 0
+        for bracket in TaxConstants.INHERITANCE_TAX_BRACKETS:
+            lower, upper, rate = bracket
+            if taxable_amount > lower:
+                amount_in_bracket = min(taxable_amount, upper) - lower
+                tax_due += amount_in_bracket * rate
+            else:
+                break
+        return round(tax_due, 2)
