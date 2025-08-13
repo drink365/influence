@@ -19,6 +19,8 @@ def load_brand():
             "一站整合：律師、會計師、財稅專家跨域協作",
             "AI 驅動：即時產出策略與 PDF，提升成交效率",
         ],
+        "contact_email": "123@gracefo.com",
+        "website": "https://www.gracefo.com"
     }
     for p in [Path("brand.json"), Path("config/brand.json"), Path("assets/brand.json")]:
         if p.exists():
@@ -118,8 +120,8 @@ with col_title:
     st.markdown(
         f"""
         <div class='app-title'>
-          <h1>{BRAND.get('app_title','influence')}</h1>
-          <p>{BRAND.get('app_subtitle','家族傳承與保單策略助手')}</p>
+          <h1>{BRAND.get('app_title')}</h1>
+          <p>{BRAND.get('app_subtitle')}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -130,17 +132,13 @@ st.markdown("<hr class='hr-thin' />", unsafe_allow_html=True)
 # -------------------------
 # Hero 行銷文案
 # -------------------------
-hero_headline = BRAND.get("hero_headline")
-hero_subhead = BRAND.get("hero_subhead")
-bullets = BRAND.get("bullets", [])
-
 st.markdown(
     f"""
     <div class="hero">
-      <h2>{hero_headline}</h2>
-      <p class="sub">{hero_subhead}</p>
+      <h2>{BRAND.get("hero_headline")}</h2>
+      <p class="sub">{BRAND.get("hero_subhead")}</p>
       <div class="badges">
-        {''.join([f"<span class='badge'>{b}</span>" for b in bullets[:4]])}
+        {''.join([f"<span class='badge'>{b}</span>" for b in BRAND.get("bullets", [])[:4]])}
       </div>
     </div>
     """,
@@ -203,13 +201,13 @@ with col2:
                 st.info("請從左側選單進入「Tools_InsuranceStrategy」頁面。")
 
 # -------------------------
-# 固定底部聯繫資訊
+# 固定底部聯繫資訊（從 brand.json 讀取）
 # -------------------------
 st.markdown("---")
 st.markdown(
-    """
+    f"""
     📍 永傳家族辦公室  
-    ✉️ 123@gracefo.com  
-    🌐 [www.gracefo.com](https://www.gracefo.com)
+    ✉️ {BRAND.get("contact_email")}  
+    🌐 [{BRAND.get("website")}]({BRAND.get("website")})
     """
 )
