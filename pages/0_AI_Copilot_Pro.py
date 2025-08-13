@@ -1,14 +1,14 @@
 # pages/0_AI_Copilot_Pro.py
-# 🪄 AI 行銷助手 Pro（免 API）＋ brand.json ＋ 一鍵匯出 PDF
+# 🪄 AI 行銷助手 Pro（免 API）＋ brand.json ＋ 一鍵匯出 PDF ＋ 自動去重
 # 讀取根目錄 brand.json：brand_quotes / hashtags / default_brand_signature
 import streamlit as st
 from datetime import date
-import os, json, random
+import os, json, random, re
 from io import BytesIO
 
 st.set_page_config(page_title="AI 行銷助手 Pro（品牌金句＋Hashtag＋PDF）", page_icon="🪄", layout="wide")
 st.title("🪄 AI 行銷助手 Pro")
-st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。自動讀取 brand.json 的金句與 Hashtag，並支援 PDF 匯出。")
+st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。自動讀取 brand.json 的金句與 Hashtag，支援 PDF 匯出，並自動移除重複句子。")
 
 # -----------------------------
 # 讀取 brand.json（根目錄）
@@ -82,7 +82,7 @@ def _brand_header(story, styleTitle, styleSlogan, styleC):
 
     # 可選 logo.png/jpg（若沒有就跳過）
     logo = None
-    for name in ["logo.png", "logo.jpg", "logo.jpeg"]:
+    for name in ["logo.png", "logo.jpg", "logo.jpeg", "logo-橫式彩色.png"]:
         p = os.path.join(os.getcwd(), name)
         if os.path.exists(p):
             logo = p
@@ -181,6 +181,38 @@ def pick_brand_quote(cfg: dict) -> str:
     arr = cfg.get("brand_quotes", [])
     return random.choice(arr) if arr else ""
 
+# ---- 去重：移除重複句子/條列（保留順序與空白行）----
+_BULLET_RE = re.compile(r'^[\s　]*(?:[-•・●○▪︎▫︎◆◇▶︎►\d]+[.)、:]*)[\s　]*')
+
+def _normalize_line(s: str) -> str:
+    # 去除前置項符號、全形空格；轉小寫；移除多餘空白
+    s = _BULLET_RE.sub("", s.strip())
+    s = s.replace("　", " ").strip().lower()
+    return s
+
+def dedupe_lines(text: str) -> str:
+    out, seen = [], set()
+    for raw in text.splitlines():
+        if raw.strip() == "":
+            out.append(raw)
+            continue
+        key = _normalize_line(raw)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(raw)
+    # 移除可能產生的多個連續空白行（最多保留一個）
+    cleaned = []
+    blank = False
+    for line in out:
+        if line.strip() == "":
+            if not blank:
+                cleaned.append(line)
+                blank = True
+        else:
+            cleaned.append(line)
+            blank = False
+    return "\n".join(cleaned)
+
 # -----------------------------
 # 產生模板
 # -----------------------------
@@ -243,6 +275,8 @@ if submitted:
 
     # 依口吻調校
     out = style_persona(out, persona, with_emoji)
+    # 🔧 去重處理（在字數限制前做）
+    out = dedupe_lines(out)
     # 字數控制
     out = limit_length(out, max_len)
 
@@ -289,4 +323,4 @@ if OUT_TEXT:
 else:
     st.info("請先產生內容，再下載 PDF。")
 
-st.caption("提示：PDF 會自動套用 brand.json 的品牌抬頭與你上傳的 NotoSansTC 字型。")
+st.caption("提示：PDF 會自動套用 brand.json 的品牌抬頭與你上傳的 NotoSansTC 字型；系統也會自動移除重複句子。")
