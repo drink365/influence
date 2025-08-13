@@ -6,3 +6,4 @@ jinja2>=3.1
 # weasyprint 可選，裝不起來也能退回 HTML
 
 reportlab>=0
+plotly==5.24.1
