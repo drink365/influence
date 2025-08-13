@@ -1,62 +1,67 @@
 # pages/0_AI_Copilot_Pro.py
-# AI Copilot Pro：互動式內容/簡報產生器（家族客戶視角）
+# AI Copilot Pro：互動式內容/簡報產生器（單頁控制，無側邊欄）
 from __future__ import annotations
 
 import streamlit as st
-from typing import List, Dict
+from typing import List
 from datetime import datetime
 
-# PDF 產生器（已支援自動帶入根目錄 logo.png）
 from legacy_tools.modules.pdf_generator import generate_pdf
 
 st.set_page_config(page_title="AI Copilot Pro｜規劃與簡報助理", layout="wide")
 
 # =========================
-# Sidebar：寫作控制面板
-# =========================
-with st.sidebar:
-    st.markdown("### ✍️ 寫作控制")
-    tone = st.selectbox(
-        "語氣",
-        ["溫暖專業", "精準中性", "權威簡潔", "故事引導", "簡報要點"],
-        index=0,
-        help="影響措辭與表達風格"
-    )
-    audience = st.selectbox(
-        "受眾",
-        ["家族客戶", "企業主", "專業夥伴", "一般大眾"],
-        index=0
-    )
-    purpose = st.selectbox(
-        "目的",
-        ["諮詢回覆", "企劃摘要", "簡報大綱", "社群貼文", "Email 正文"],
-        index=1
-    )
-    fmt = st.radio("格式", ["條列重點", "段落敘述"], index=0, horizontal=True)
-    length = st.select_slider("長度", options=["短", "中", "長"], value="中")
-    add_brand = st.checkbox("加入品牌簽名（永傳家族辦公室）", value=True)
-    keywords = st.text_input("必含關鍵詞（逗號分隔）", value="")
-    avoid = st.text_input("避免詞（逗號分隔）", value="")
-    st.caption("所有金額仍以 **萬元（TWD）** 為主；若要合併工具結果，可把摘要貼到下方再重寫。")
-
-# =========================
-# Header 文案（客戶視角）
+# Header：客戶視角說明
 # =========================
 st.markdown("""
-<div style="background:#f5f8ff;padding:1.5rem;border-radius:12px;border:1px solid #e2e8f0;">
+<div style="background:#f5f8ff;padding:1.25rem 1.25rem;border-radius:12px;border:1px solid #e2e8f0;">
   <h2 style="margin:0 0 .5rem 0;color:#0f172a;">你的專屬 AI 規劃助理，讓傳承更清楚、更從容</h2>
   <p style="margin:0;color:#334155;">
     把法律、稅務與保險的複雜度變簡單。用對話，就能快速產出家族藍圖、簡報摘要與下一步建議。
   </p>
   <ul style="margin:1rem 0 0 1.25rem;color:#334155;">
     <li><b>一問即答：</b>以你的情境為核心，回覆清楚、少行話。</li>
-    <li><b>專業可追溯：</b>依據台灣常見實務與合規方向，標註注意事項。</li>
+    <li><b>專業可追溯：</b>依據常見實務與合規方向，標註注意事項。</li>
     <li><b>立即可用：</b>一鍵轉成簡報大綱／條列重點／Email 版，並可下載 PDF。</li>
   </ul>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("---")
+
+# =========================
+# 寫作控制（放在頁面上方）
+# =========================
+with st.container():
+    st.markdown("### ✍️ 寫作控制")
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+
+    with c1:
+        tone = st.selectbox(
+            "語氣",
+            ["溫暖專業", "精準中性", "權威簡潔", "故事引導", "簡報要點"],
+            index=0
+        )
+    with c2:
+        audience = st.selectbox("受眾", ["家族客戶", "企業主", "專業夥伴", "一般大眾"], index=0)
+    with c3:
+        purpose = st.selectbox("目的", ["諮詢回覆", "企劃摘要", "簡報大綱", "社群貼文", "Email 正文"], index=1)
+    with c4:
+        fmt = st.radio("格式", ["條列重點", "段落敘述"], index=0, horizontal=True)
+
+    c5, c6, c7 = st.columns([1, 1, 1])
+    with c5:
+        length = st.select_slider("長度", options=["短", "中", "長"], value="中")
+    with c6:
+        add_brand = st.checkbox("加入品牌簽名", value=True, help="結尾加上：永傳家族辦公室｜www.gracefo.com｜123@gracefo.com")
+    with c7:
+        st.caption("金額單位以 **萬元（TWD）** 為主；可在下方貼上工具結果再重寫。")
+
+    c8, c9 = st.columns([1, 1])
+    with c8:
+        keywords = st.text_input("必含關鍵詞（逗號分隔）", value="")
+    with c9:
+        avoid = st.text_input("避免詞（逗號分隔）", value="")
 
 # =========================
 # 主區：輸入／產出
@@ -72,7 +77,6 @@ with col_in:
     )
     generate_btn = st.button("✨ 產出內容", type="primary", use_container_width=True)
 
-    # 快捷重寫動作（在產出後可用）
     st.markdown("##### 快捷重寫")
     col_a, col_b, col_c = st.columns(3)
     with col_a:
@@ -103,7 +107,6 @@ def _sys_prompt(tone: str, audience: str, purpose: str, fmt: str, length: str,
         "請使用繁體中文，避免過度行話，讓客戶易懂。"
     )
 
-# 嘗試使用 OpenAI；沒有金鑰時 fallback
 def _llm_generate(prompt: str, system: str, mode: str = "normal") -> str:
     # mode: normal/shorter/longer/slide
     try:
@@ -121,7 +124,6 @@ def _llm_generate(prompt: str, system: str, mode: str = "normal") -> str:
                 {"role": "system", "content": system},
                 {"role": "user", "content": f"{instr}\n\n使用者內容：\n{prompt}"},
             ]
-            # 模型名稱可依你環境調整
             resp = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
                 messages=msgs,
@@ -129,25 +131,24 @@ def _llm_generate(prompt: str, system: str, mode: str = "normal") -> str:
                 max_tokens=1200,
             )
             return resp["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        # 沒有 openai 或金鑰、或任意錯誤 → fallback
+    except Exception:
         pass
 
-    # ===== Fallback（離線草稿器）=====
+    # Fallback（無金鑰/錯誤時）
     tag = {"normal": "建議稿", "shorter": "精簡稿", "longer": "擴寫稿", "slide": "簡報大綱"}[mode]
-    bullet = "• " if "條列" in system else ""
+    bullet = "• " if "條列格式" in system else ""
     lines = [
-        f"【{tag}】（此為離線草稿；上線後會改用模型生成）",
+        f"【{tag}】（離線草稿；上線後會改用模型生成）",
         "",
         f"目的：{purpose}｜受眾：{audience}｜語氣：{tone}",
         "",
     ]
-    if "簡報大綱" in tag:
+    if mode == "slide":
         lines += [
-            f"{bullet}問題/情境：{prompt[:50]}…",
-            f"{bullet}核心觀念：以『預留稅源、確定性傳承』為主軸",
-            f"{bullet}重點做法：條列 3–5 點可執行步驟",
-            f"{bullet}下一步：預約諮詢或產出工具 PDF",
+            f"{bullet}問題/情境：{(st.session_state.get('last_topic') or '—')}",
+            f"{bullet}核心觀念：預留稅源、確定性傳承",
+            f"{bullet}可執行步驟：條列 3–5 點",
+            f"{bullet}下一步：預約諮詢或下載工具 PDF",
         ]
     else:
         lines += [
@@ -156,15 +157,17 @@ def _llm_generate(prompt: str, system: str, mode: str = "normal") -> str:
             f"{bullet}說明做法與下一步",
             "",
             "內容草稿：",
-            prompt.strip() or "（尚未輸入內容）",
+            (st.session_state.get("last_topic") or "（尚未輸入內容）"),
         ]
     if add_brand:
         lines += ["", "—", "永傳家族辦公室｜www.gracefo.com｜123@gracefo.com"]
     return "\n".join(lines)
 
-# 狀態：上一次產出
+# 狀態
 if "copilot_output" not in st.session_state:
     st.session_state.copilot_output = ""
+if "last_topic" not in st.session_state:
+    st.session_state.last_topic = ""
 
 system_prompt = _sys_prompt(tone, audience, purpose, fmt, length, keywords, avoid, add_brand)
 
@@ -173,18 +176,19 @@ with col_out:
     if generate_btn and not user_prompt.strip():
         st.warning("請先輸入內容或情境，再按「產出內容」。")
     if generate_btn and user_prompt.strip():
+        st.session_state.last_topic = user_prompt.strip()[:60]
         st.session_state.copilot_output = _llm_generate(user_prompt, system_prompt, mode="normal")
 
     # 快捷重寫
-    if st.session_state.copilot_output and shorter_btn:
+    if st.session_state.copilot_output and 'shorter_btn' in locals() and shorter_btn:
         st.session_state.copilot_output = _llm_generate(
             st.session_state.copilot_output, system_prompt, mode="shorter"
         )
-    if st.session_state.copilot_output and longer_btn:
+    if st.session_state.copilot_output and 'longer_btn' in locals() and longer_btn:
         st.session_state.copilot_output = _llm_generate(
             st.session_state.copilot_output, system_prompt, mode="longer"
         )
-    if st.session_state.copilot_output and slide_btn:
+    if st.session_state.copilot_output and 'slide_btn' in locals() and slide_btn:
         st.session_state.copilot_output = _llm_generate(
             st.session_state.copilot_output, system_prompt, mode="slide"
         )
@@ -195,7 +199,7 @@ with col_out:
     with col_dl1:
         st.download_button(
             "下載 .txt",
-            data=result.encode("utf-8"),
+            data=(result or "").encode("utf-8"),
             file_name=f"AI_Copilot_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
             mime="text/plain",
             use_container_width=True,
@@ -206,7 +210,7 @@ with col_out:
             pdf_bytes = generate_pdf(
                 content=result,
                 title=f"{purpose}",
-                logo_path=None,  # 會自動抓根目錄 logo.png
+                logo_path=None,  # 自動抓根目錄 logo.png
                 footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
             ).getvalue()
             st.download_button(
@@ -218,7 +222,7 @@ with col_out:
             )
 
 st.markdown("---")
-# 導覽：依你偏好修改名稱
+# 導覽（名稱依你的偏好：資產地圖保留「家族」，其餘不加）
 col_nav1, col_nav2, col_nav3 = st.columns(3)
 with col_nav1:
     st.page_link("pages/Tools_AssetMap.py", label="🗺️ 家族資產地圖")
