@@ -124,7 +124,7 @@ def _engine(p: Profile) -> List[Dict[str, Any]]:
             )
             # 若為 1 年，去掉多餘逗號
             if accum == "":
-                desc = desc.replace("，後期", "後期")
+                desc = desc.replace("，後期", "，後期")
             res.append({
                 "name": "增額終身壽險（高現金價值型）",
                 "why": "穩定累積保單現金價值，提供保單借款與傳承效率；可作為稅源或企業傳承準備。",
