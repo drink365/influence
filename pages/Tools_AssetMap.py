@@ -150,7 +150,14 @@ def build_pdf_bytes() -> bytes:
     for _, r in df_liab.iterrows():
         lines.append(f"{r['項目']}: {r['金額（萬元）']:,.0f}")
 
-    pdf_buf = generate_pdf(content="\n".join(lines), title="資產地圖")
+    # ✅ 加上品牌 logo 與頁尾
+    pdf_buf = generate_pdf(
+        content="\n".join(lines),
+        title="資產地圖",
+        logo_path="logo.png",  # 根目錄 logo
+        # 頁首單位註記已由 pdf_generator 預設顯示：本報告所有金額單位：萬元（TWD）
+        footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
+    )
     return pdf_buf.getvalue()
 
 cA, cB = st.columns([1, 1])
