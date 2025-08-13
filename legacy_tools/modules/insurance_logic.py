@@ -1,5 +1,5 @@
 # legacy_tools/modules/insurance_logic.py
-# 保單策略引擎（新版專用，無自我匯入）
+# 保單策略引擎（新版專用，已統一用語：定期壽險；前期加保文案依年期自動調整）
 # API：
 #   recommend_strategies(age, gender, budget, currency, pay_years, goals)
 #   並對外輸出 FX_USD_TWD（頁面用來顯示分級一致的匯率換算）
@@ -69,6 +69,19 @@ def _age_band(age: int) -> str:
 def _fmt_amt_wan(amount_wan: float, symbol: str) -> str:
     return f"{symbol}{amount_wan:,.0f}萬"
 
+def _accum_phrase(pay_years: int) -> str:
+    """
+    依繳費年期生成「前期加保」文案：
+      - >=5 年：『前 3–5 年視資金狀況加保；』
+      - 3~4 年：『前期視資金狀況加保；』
+      - 1~2 年：不加此句
+    """
+    if pay_years >= 5:
+        return "前 3–5 年視資金狀況加保；"
+    if 3 <= pay_years <= 4:
+        return "前期視資金狀況加保；"
+    return ""  # 1~2 年不顯示
+
 # === 基礎模組 ===
 def _base_set(p: Profile) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
@@ -86,7 +99,7 @@ def _base_set(p: Profile) -> List[Dict[str, Any]]:
     # 基礎壽險
     if _has(p.goals, "保障", "家庭保障", "稅源", "傳承"):
         items.append({
-            "name": "基礎壽險模組（定壽/終身壽險）",
+            "name": "基礎壽險模組（定期壽險 / 終身壽險）",
             "why": "以有效率的方式建立『萬一』保額，守住家庭與企業的基本盤。",
             "fit": [_age_band(p.age), "家庭責任族"],
             "description": (
@@ -105,14 +118,20 @@ def _engine(p: Profile) -> List[Dict[str, Any]]:
     # 1) 積累/傳承
     if _has(p.goals, "傳承", "資產配置", "現金流", "稅源", "企業主", "家族"):
         if tier in ("進階", "高端"):
+            # 依年期調整前期加保句子
+            accum = _accum_phrase(p.pay_years)
+            desc = (
+                f"建議以 {p.pay_years} 年繳設計增額結構，"
+                f"{accum}"
+                "後期可利用保單借款做資金調度或作為稅源預留。"
+            )
+            # 若為 1~2 年，去掉多餘逗號
+            desc = desc.replace("，後期", "後期") if accum == "" else desc
             res.append({
                 "name": "增額終身壽險（高現金價值型）",
                 "why": "穩定累積保單現金價值，提供保單借款與傳承效率；可作為稅源或企業傳承準備。",
                 "fit": [p.gender, _age_band(p.age), f"{tier}預算"],
-                "description": (
-                    f"建議以 {p.pay_years} 年繳設計增額結構，前 3–5 年加保；"
-                    "後期可利用保單借款做資金調度或作為稅源預留。"
-                )
+                "description": desc
             })
         else:
             res.append({
@@ -159,7 +178,7 @@ def _engine(p: Profile) -> List[Dict[str, Any]]:
     # 5) 入門／標準預算
     if tier in ("入門", "標準"):
         res.append({
-            "name": "短年期定壽＋醫療附約（入門組合）",
+            "name": "短年期定期壽險＋醫療附約（入門組合）",
             "why": "有限預算下，先以最低成本完成基本保障，之後再升級。",
             "fit": [_age_band(p.age), f"{tier}預算"],
             "description": f"定期壽險 {p.pay_years} 年繳；醫療以實支實付為主。未來預算增加再轉增額終身。"
