@@ -135,7 +135,7 @@ if not goals:
     st.warning("請至少選擇 1 個目標，才會有具體建議。")
     st.stop()
 
-# ✅ 新版 API 呼叫（不再使用舊的 goal/years 參數）
+# ✅ 新版 API 呼叫
 recs = recommend_strategies(
     age=int(age),
     gender=gender,
@@ -146,6 +146,16 @@ recs = recommend_strategies(
 )
 
 # 分級標籤
+def _tier_label(budget_wan: float, currency: str) -> str:
+    budget_in_twd_wan = budget_wan * (FX_USD_TWD if currency == "USD" else 1.0)
+    if budget_in_twd_wan >= 1000:
+        return "高端預算"
+    if budget_in_twd_wan >= 300:
+        return "進階預算"
+    if budget_in_twd_wan >= 100:
+        return "標準預算"
+    return "入門預算"
+
 tier_text = _tier_label(float(budget), currency)
 st.markdown(
     f"### 📌 分級：**{tier_text}**　｜　總預算：**{_fmt_money_wan(float(budget), currency)}**　｜　年期：**{int(pay_years)} 年**"
@@ -159,6 +169,7 @@ else:
         with st.expander(f"{i}. {s.get('name','（未命名策略）')}"):
             st.markdown(f"**適用對象：** {'、'.join(s.get('fit', []) or [])}")
             st.markdown(f"**策略觀念：** {s.get('why','')}")
+            # 這裡的內容已由引擎自動按年期調整「前期加保」文案
             st.markdown(f"**實作作法：** {s.get('description','')}")
 
 # 下載區（TXT / PDF）
