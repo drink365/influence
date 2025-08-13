@@ -217,7 +217,7 @@ if submitted:
     st.download_button("下載為 .txt", data=out, file_name=f"mkPRO_{date.today()}.txt")
 
 st.markdown("---")
-st.subheader("🧾 下載 PDF（自動移除/轉換 emoji）")
+st.subheader("🧾 下載 PDF")
 if OUT_TEXT:
     pdf_buf = generate_pdf(content=OUT_TEXT, title=f"{channel}｜{topic}")
     st.download_button(
