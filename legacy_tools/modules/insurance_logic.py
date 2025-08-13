@@ -72,15 +72,12 @@ def _fmt_amt_wan(amount_wan: float, symbol: str) -> str:
 def _accum_phrase(pay_years: int) -> str:
     """
     依繳費年期生成「前期加保」文案：
-      - >=5 年：『前 3–5 年視資金狀況加保；』
-      - 3~4 年：『前期視資金狀況加保；』
-      - 1~2 年：不加此句
+      - 1 年：不顯示
+      - >= 2 年：『前期視資金狀況加保；』
     """
-    if pay_years >= 5:
-        return "前 3–5 年視資金狀況加保；"
-    if 3 <= pay_years <= 4:
+    if pay_years >= 2:
         return "前期視資金狀況加保；"
-    return ""  # 1~2 年不顯示
+    return ""  # 1 年不顯示
 
 # === 基礎模組 ===
 def _base_set(p: Profile) -> List[Dict[str, Any]]:
@@ -96,7 +93,7 @@ def _base_set(p: Profile) -> List[Dict[str, Any]]:
                 f" 建議先預留 {_fmt_amt_wan(min(p.total_budget_wan, 100), p.currency_symbol)} 於保障模組。"
             )
         })
-    # 基礎壽險
+    # 基礎壽險（用語統一：定期壽險）
     if _has(p.goals, "保障", "家庭保障", "稅源", "傳承"):
         items.append({
             "name": "基礎壽險模組（定期壽險 / 終身壽險）",
@@ -118,15 +115,16 @@ def _engine(p: Profile) -> List[Dict[str, Any]]:
     # 1) 積累/傳承
     if _has(p.goals, "傳承", "資產配置", "現金流", "稅源", "企業主", "家族"):
         if tier in ("進階", "高端"):
-            # 依年期調整前期加保句子
+            # 依年期調整前期加保句子（1 年不顯示；>=2 年顯示）
             accum = _accum_phrase(p.pay_years)
             desc = (
                 f"建議以 {p.pay_years} 年繳設計增額結構，"
                 f"{accum}"
                 "後期可利用保單借款做資金調度或作為稅源預留。"
             )
-            # 若為 1~2 年，去掉多餘逗號
-            desc = desc.replace("，後期", "後期") if accum == "" else desc
+            # 若為 1 年，去掉多餘逗號
+            if accum == "":
+                desc = desc.replace("，後期", "後期")
             res.append({
                 "name": "增額終身壽險（高現金價值型）",
                 "why": "穩定累積保單現金價值，提供保單借款與傳承效率；可作為稅源或企業傳承準備。",
