@@ -1,5 +1,5 @@
 # pages/0_Tools.py
-# 🧰 顧問工具庫（含 AI 助手卡片＋品牌小 Logo）
+# 🧰 顧問工具庫（含 AI 助手卡片＋品牌 Logo）
 import os
 import streamlit as st
 from nav_shim import goto
@@ -7,13 +7,16 @@ from nav_shim import goto
 st.set_page_config(page_title="顧問工具庫｜influence", page_icon="🧰", layout="wide")
 
 def find_logo():
-    for p in ["logo.png", "logo.jpg", "logo.jpeg", "logo-橫式彩色.png", os.path.join("pages","logo.png")]:
-        if os.path.exists(p):
-            return p
+    # 回傳可被 st.image 讀取的「實體檔案路徑」
+    for p in ["logo.png", "logo.jpg", "logo.jpeg", "logo-橫式彩色.png", os.path.join("pages", "logo.png")]:
+        abs_p = os.path.join(os.getcwd(), p)
+        if os.path.exists(abs_p):
+            return abs_p
     return None
 
-logo = find_logo()
+logo_path = find_logo()
 
+# ---- 樣式（保留卡片網格）----
 st.markdown(
     """
     <style>
@@ -21,21 +24,22 @@ st.markdown(
     .card {padding:16px;border-radius:16px;border:1px solid #eee;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.06);transition: transform .08s ease, box-shadow .08s ease;}
     .card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.08);}
     .card h4{margin:0 0 6px 0;}
-    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-    .logo-small{height:32px;opacity:.95}
-    .muted { color:#666; font-size: 0.95rem; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-st.markdown('<div class="topbar">', unsafe_allow_html=True)
-st.markdown("<h2>🧰 顧問工具庫</h2>", unsafe_allow_html=True)
-if logo:
-    st.markdown(f'<img class="logo-small" src="{logo}">', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+# ---- Topbar：左標題、右 Logo（用 st.image，避免破圖）----
+col_title, col_logo = st.columns([1, 0.25])
+with col_title:
+    st.markdown("## 🧰 顧問工具庫")
+with col_logo:
+    if logo_path:
+        st.image(logo_path, use_container_width=True)
 
 st.caption("把專業變成成交力：遺產稅試算、傳承地圖、保單策略、AI 行銷助手。")
+
+# ---- 卡片網格 ----
 st.markdown('<div class="grid">', unsafe_allow_html=True)
 
 # 1 遺產稅
