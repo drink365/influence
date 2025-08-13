@@ -1,18 +1,5 @@
-st.markdown("""
-<div style="background:#fffbea;border:1px solid #facc15;padding:1rem;border-radius:10px;">
-  <h4 style="margin-top:0;color:#854d0e;">🔒 模式說明 & 隱私提示</h4>
-  <ul style="margin:0;padding-left:1.2rem;color:#713f12;">
-    <li><b>品牌草擬（免費）</b>：僅讀取「公開節錄」知識卡（去除機密內容），輸出一般概念與基礎建議。</li>
-    <li><b>專家模式（用戶 API）</b>：需輸入您的 OpenAI API Key，將讀取「私有完整」知識卡，產出更深入且專屬的專業回覆，費用由用戶承擔。</li>
-    <li>您的輸入與生成內容不會被儲存至伺服器，僅在本次會話中使用。</li>
-    <li>請勿在免費模式輸入或貼上任何機密資訊。</li>
-  </ul>
-</div>
-""", unsafe_allow_html=True)
-
-
 # pages/0_AI_Copilot_Pro.py
-# AI Copilot Pro：安全版（免費=公開節錄；專家=用戶API讀私有）
+# AI Copilot Pro：安全版（免費=公開節錄；專家=用戶API讀私有）＋ 模式說明小卡
 from __future__ import annotations
 
 import os
@@ -34,7 +21,7 @@ st.set_page_config(
 )
 
 # —— 免費模式防外洩上限（雙重保護） ——
-FREE_MAX_SNIPPETS = 2       # 最多擷取 2 段
+FREE_MAX_SNIPPETS = 2          # 最多擷取 2 段
 FREE_MAX_CHARS_PER_SNIP = 300  # 每段最多 300 字
 SENSITIVE_PATTERNS = [
     r"【內部】.*?【/內部】",
@@ -59,7 +46,7 @@ def scrub_sensitive(text: str) -> str:
     return t
 
 def hard_truncate(text: str, limit: int) -> str:
-    if len(text) <= limit: 
+    if len(text) <= limit:
         return text
     return text[:limit] + "……"
 
@@ -181,6 +168,21 @@ def llm_generate_with_rag(api_key: str, user_prompt: str, system_prompt: str,
             "2) 改用『品牌草擬（免費）』模式先產出版本，\n"
             "3) 稍後再試。"
         )
+
+# ==============================
+# 最上方：模式說明 & 隱私提示（新增）
+# ==============================
+st.markdown("""
+<div style="background:#fffbea;border:1px solid #facc15;padding:1rem;border-radius:10px;">
+  <h4 style="margin-top:0;color:#854d0e;">🔒 模式說明 & 隱私提示</h4>
+  <ul style="margin:0;padding-left:1.2rem;color:#713f12;">
+    <li><b>品牌草擬（免費）</b>：僅讀取「公開節錄」知識卡（去除機密內容），輸出一般概念與基礎建議。</li>
+    <li><b>專家模式（用戶 API）</b>：需輸入您的 OpenAI API Key，將讀取「私有完整」知識卡，產出更深入且專屬的專業回覆，費用由用戶承擔。</li>
+    <li>您的輸入與生成內容不會被儲存至伺服器，僅在本次會話中使用。</li>
+    <li>請勿在免費模式輸入或貼上任何機密資訊。</li>
+  </ul>
+</div>
+""", unsafe_allow_html=True)
 
 # ==============================
 # Header（品牌定位）
