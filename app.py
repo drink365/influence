@@ -1,5 +1,5 @@
 # app.py
-# 行銷導向首頁（Hero + 品牌價值 + CTA，已移除 Hero 內多餘藍色按鈕）
+# 行銷導向首頁（Hero + 品牌價值 + CTA），已強化文案與唯一有效 CTA「免費產生保單策略」
 from __future__ import annotations
 
 import base64
@@ -18,12 +18,13 @@ def load_brand():
         "booking_url": "",
         "contact_line": "",
         "contact_email": "",
-        "hero_headline": "以專業，讓傳承更簡單。",
-        "hero_subhead": "結合法律、稅務與保險的整合式規劃，打造家族永續現金流。",
+        # 行銷導向文案（可在 brand.json 覆寫）
+        "hero_headline": "專屬傳承藍圖，立即為家人打造永續現金流",
+        "hero_subhead": "結合法律、稅務與保險的整合式規劃，3 分鐘產生策略摘要與專業簡報，省時更聚焦，讓決策更容易。",
         "bullets": [
             "高端客製：以人為本，量身訂製最佳解決方案",
             "一站整合：律師、會計師、財稅專家跨域協作",
-            "AI 驅動：快速產出策略與專業簡報，提高成交效率",
+            "AI 驅動：即時產出策略與 PDF，提升成交效率",
         ],
     }
     for p in [Path("brand.json"), Path("config/brand.json"), Path("assets/brand.json")]:
@@ -97,12 +98,6 @@ CSS = """
   border-radius: 999px; padding: 6px 12px; background:#fff; border:1px solid #e2e8ff;
   color:#334155; font-size:0.92rem;
 }
-.cta-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:14px; }
-.cta a {
-  display:inline-block; border-radius: 10px; padding: 10px 16px;
-  text-decoration:none; font-weight:600;
-}
-.cta-outline { background:#fff; color:#2b59ff; border:1px solid #2b59ff; }
 
 /* 三大價值 */
 .value-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; margin-top:10px; }
@@ -143,7 +138,7 @@ with col_title:
 st.markdown("<hr class='hr-thin' />", unsafe_allow_html=True)
 
 # -------------------------
-# Hero 行銷文案（已移除藍色主按鈕）
+# Hero 行銷文案（不含多餘按鈕）
 # -------------------------
 hero_headline = BRAND.get("hero_headline")
 hero_subhead = BRAND.get("hero_subhead")
@@ -151,13 +146,12 @@ bullets = BRAND.get("bullets", [])
 booking_url = BRAND.get("booking_url") or ""
 contact_line = BRAND.get("contact_line") or ""
 
-# 只保留外部 CTA（預約／LINE），不放主色按鈕
 cta_bits = []
 if booking_url:
-    cta_bits.append(f"<span class='cta'><a class='cta-outline' href='{booking_url}' target='_blank'>預約 30 分鐘諮詢</a></span>")
+    cta_bits.append(f"<a class='badge' href='{booking_url}' target='_blank'>預約 30 分鐘諮詢</a>")
 if contact_line:
-    cta_bits.append(f"<span class='cta'><a class='cta-outline' href='https://line.me/R/ti/p/{contact_line}' target='_blank'>加入 LINE 洽詢</a></span>")
-cta_html = "<div class='cta-row'>" + "".join(cta_bits) + "</div>" if cta_bits else ""
+    cta_bits.append(f"<a class='badge' href='https://line.me/R/ti/p/{contact_line}' target='_blank'>加入 LINE 洽詢</a>")
+cta_html = "　".join(cta_bits)
 
 st.markdown(
     f"""
@@ -167,7 +161,7 @@ st.markdown(
       <div class="badges">
         {''.join([f"<span class='badge'>{b}</span>" for b in bullets[:4]])}
       </div>
-      {cta_html}
+      <div style="margin-top:12px;">{cta_html}</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -192,7 +186,7 @@ with v2:
         """
         <div class="value-card">
           <h3>高效成交工具，現場就能用</h3>
-          <p>AI 立即生成策略與 PDF 簡報，清楚展示傳承與稅源預留效果，縮短決策時間。</p>
+          <p>AI 即時生成策略與 PDF 簡報，清楚呈現稅源預留與家人可得金額，縮短決策時間。</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -202,7 +196,7 @@ with v3:
         """
         <div class="value-card">
           <h3>品牌一致、客製輸出</h3>
-          <p>套用專屬 Logo 與版面，生成可分享的策略摘要，兼顧專業形象與實務可行性。</p>
+          <p>套用專屬 Logo 與版面，快速輸出策略摘要與話術，專業又好分享。</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -215,10 +209,10 @@ st.markdown("---")
 col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader("下一步")
-    st.markdown("- 前往 **保單策略建議**，輸入預算與目標，立即產出專屬建議。")
-    st.markdown("- 需要完整家族傳承規劃？可預約顧問 1 對 1 諮詢。")
+    st.markdown("- 前往 **保單策略建議**，輸入預算與目標，立即獲得你的專屬傳承藍圖。")
+    st.markdown("- 若需完整家族傳承規劃，可預約顧問 1 對 1 諮詢。")
 with col2:
-    if st.button("👉 立即產生保單策略", use_container_width=True):
+    if st.button("👉 免費產生保單策略", use_container_width=True):
         # 嘗試多種導頁方式以提高相容性
         try:
             from streamlit_extras.switch_page_button import switch_page
