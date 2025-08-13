@@ -1,14 +1,16 @@
 # pages/0_AI_Copilot_Pro.py
 # 🪄 AI 行銷助手 Pro（免 API）＋ brand.json ＋ 一鍵匯出 PDF ＋ 自動去重
-# 讀取根目錄 brand.json：brand_quotes / hashtags / default_brand_signature
 import streamlit as st
 from datetime import date
 import os, json, random, re
 from io import BytesIO
 
+# ★ 共用 PDF 引擎（內含 emoji 清理）
+from legacy_tools.modules.pdf_generator import generate_pdf
+
 st.set_page_config(page_title="AI 行銷助手 Pro（品牌金句＋Hashtag＋PDF）", page_icon="🪄", layout="wide")
 st.title("🪄 AI 行銷助手 Pro")
-st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。自動讀取 brand.json 的金句與 Hashtag，支援 PDF 匯出，並自動移除重複句子。")
+st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。讀取 brand.json 的金句與 Hashtag；PDF 由共用引擎產生（含 emoji 清理）。")
 
 # -----------------------------
 # 讀取 brand.json（根目錄）
@@ -37,62 +39,30 @@ def load_brand_config():
 CFG = load_brand_config()
 
 # -----------------------------
-# PDF 輔助：字型／樣式／抬頭
+# 去重（移除重複句子/條列，保留順序與空白行）
 # -----------------------------
-def _find_font():
-    candidates = [
-        os.path.join(os.getcwd(), "NotoSansTC-Regular.ttf"),
-        os.path.join(os.getcwd(), "pages", "NotoSansTC-Regular.ttf"),
-        "NotoSansTC-Regular.ttf",
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    return None
+_BULLET_RE = re.compile(r'^[\s　]*(?:[-•・●○▪︎▫︎◆◇▶︎►\d]+[.)、:]*)[\s　]*')
+def _normalize_line(s: str) -> str:
+    s = _BULLET_RE.sub("", s.strip())
+    s = s.replace("　", " ").strip().lower()
+    return s
 
-def _pdf_styles():
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.enums import TA_CENTER
-    from reportlab.lib import colors
-
-    font_path = _find_font()
-    font_name = "Helvetica"
-    if font_path:
-        try:
-            pdfmetrics.registerFont(TTFont("NotoSansTC", font_path))
-            font_name = "NotoSansTC"
-        except Exception:
-            pass
-
-    styles = getSampleStyleSheet()
-    styleN = ParagraphStyle(name="NormalTC", parent=styles["Normal"], fontName=font_name, fontSize=12, leading=16)
-    styleH = ParagraphStyle(name="HeadingTC", parent=styles["Heading2"], fontName=font_name, fontSize=14, leading=18, spaceAfter=10)
-    styleC = ParagraphStyle(name="CenterTC", parent=styles["Normal"], fontName=font_name, fontSize=10, alignment=TA_CENTER)
-    styleTitle = ParagraphStyle(name="BrandTitle", parent=styles["Title"], fontName=font_name, fontSize=20, leading=24, spaceAfter=4)
-    styleSlogan = ParagraphStyle(name="BrandSlogan", parent=styles["Normal"], fontName=font_name, fontSize=11, textColor=colors.grey)
-    return styleN, styleH, styleC, styleTitle, styleSlogan
-
-def _brand_header(story, styleTitle, styleSlogan, styleC):
-    from reportlab.platypus import Paragraph, Spacer, Image
-    from reportlab.lib.units import mm
-    brand_name = CFG.get("brand_name", "永傳家族辦公室")
-    slogan = CFG.get("slogan", "傳承您的影響力")
-
-    # 可選 logo.png/jpg（若沒有就跳過）
-    logo = None
-    for name in ["logo.png", "logo.jpg", "logo.jpeg", "logo-橫式彩色.png"]:
-        p = os.path.join(os.getcwd(), name)
-        if os.path.exists(p):
-            logo = p
-            break
-    if logo:
-        story.append(Image(logo, width=80*mm, height=20*mm))
-        story.append(Spacer(1, 6))
-    story.append(Paragraph(brand_name, styleTitle))
-    story.append(Paragraph(slogan, styleSlogan))
-    story.append(Paragraph(f"產出日期：{date.today().isoformat()}", styleC))
+def dedupe_lines(text: str) -> str:
+    out, seen = [], set()
+    for raw in text.splitlines():
+        if raw.strip() == "":
+            out.append(raw); continue
+        key = _normalize_line(raw)
+        if key and key not in seen:
+            seen.add(key); out.append(raw)
+    # 合併多重空白行
+    cleaned, blank = [], False
+    for line in out:
+        if line.strip()=="":
+            if not blank: cleaned.append(line); blank=True
+        else:
+            cleaned.append(line); blank=False
+    return "\n".join(cleaned)
 
 # -----------------------------
 # 控制面板
@@ -110,7 +80,7 @@ with st.form("mk_pro"):
     with c3:
         brand_sig = st.text_input("🏷️ 品牌簽名（可留空）", CFG.get("default_brand_signature", ""))
         max_len = st.slider("✂️ 建議字數上限", 80, 500, 220, step=10)
-        with_emoji = st.toggle("🙂 適量加入 Emoji", value=True)
+        with_emoji = st.toggle("🙂 適量加入 Emoji（僅網頁顯示；PDF 會自動轉換/移除）", value=True)
 
     preset = st.radio("⚡ 快速模板", ["自訂輸入", "稅源預留（高資產）", "壯世代轉型（行銷）", "企業主接班（家業/家產/家風）"], index=0)
     use_quote = st.toggle("🧡 自動插入品牌金句", value=True)
@@ -119,7 +89,7 @@ with st.form("mk_pro"):
     submitted = st.form_submit_button("✨ 產生內容")
 
 # -----------------------------
-# 工具函式
+# 文案產生工具
 # -----------------------------
 def bullets(text: str):
     return [s.strip(" 　-•\t1234567890.).、") for s in text.splitlines() if s.strip()]
@@ -181,45 +151,12 @@ def pick_brand_quote(cfg: dict) -> str:
     arr = cfg.get("brand_quotes", [])
     return random.choice(arr) if arr else ""
 
-# ---- 去重：移除重複句子/條列（保留順序與空白行）----
-_BULLET_RE = re.compile(r'^[\s　]*(?:[-•・●○▪︎▫︎◆◇▶︎►\d]+[.)、:]*)[\s　]*')
-
-def _normalize_line(s: str) -> str:
-    # 去除前置項符號、全形空格；轉小寫；移除多餘空白
-    s = _BULLET_RE.sub("", s.strip())
-    s = s.replace("　", " ").strip().lower()
-    return s
-
-def dedupe_lines(text: str) -> str:
-    out, seen = [], set()
-    for raw in text.splitlines():
-        if raw.strip() == "":
-            out.append(raw)
-            continue
-        key = _normalize_line(raw)
-        if key and key not in seen:
-            seen.add(key)
-            out.append(raw)
-    # 移除可能產生的多個連續空白行（最多保留一個）
-    cleaned = []
-    blank = False
-    for line in out:
-        if line.strip() == "":
-            if not blank:
-                cleaned.append(line)
-                blank = True
-        else:
-            cleaned.append(line)
-            blank = False
-    return "\n".join(cleaned)
-
 # -----------------------------
-# 產生模板
+# 模板渲染
 # -----------------------------
 def gen_fb(aud, topic, pts, cta, brand_sig, cfg, use_quote, use_hashtags):
-    title = f"【{topic}｜{aud}不可不知】"
-    # ✅ 這裡調整：'你是否也在想：' 後面強制空一行
-    lines = [title, "你是否也在想：", ""]
+    # 固定：「你是否也在想：」後面空一行
+    lines = [f"【{topic}｜{aud}不可不知】", "你是否也在想：", ""]
     lines += [f"・{p}" for p in pts]
     if use_quote:
         q = pick_brand_quote(cfg)
@@ -244,8 +181,7 @@ def gen_line(aud, topic, pts, cta, cfg, use_quote):
     return "\n".join(lines)
 
 def gen_opening(aud, topic, pts, cfg, use_quote):
-    lines = [f"各位好，今天我們談「{topic}」。"]
-    lines += [f"多數{aud}會遇到："]
+    lines = [f"各位好，今天我們談「{topic}」。", f"多數{aud}會遇到："]
     for i, p in enumerate(pts[:3] if pts else ["資訊分散難比較", "稅務流動性不足", "家族對話卡關"], 1):
         lines += [f"{i}. {p}"]
     if use_quote:
@@ -255,14 +191,12 @@ def gen_opening(aud, topic, pts, cfg, use_quote):
     return "\n".join(lines)
 
 # -----------------------------
-# 產出流程 + PDF 匯出
+# 產出流程 + PDF 下載（統一走共用引擎）
 # -----------------------------
-OUT_TEXT = ""  # 暫存輸出，給 PDF 用
+OUT_TEXT = ""
 
 if submitted:
     pts = bullets(key_points)
-
-    # 模板套用
     if preset != "自訂輸入":
         topic, pts, cta = apply_preset(preset, topic, pts, cta)
 
@@ -273,11 +207,8 @@ if submitted:
     else:
         out = gen_opening(audience, topic, pts, CFG, use_quote)
 
-    # 依口吻調校
     out = style_persona(out, persona, with_emoji)
-    # 🔧 去重處理（在字數限制前做）
     out = dedupe_lines(out)
-    # 字數控制
     out = limit_length(out, max_len)
 
     OUT_TEXT = out
@@ -285,35 +216,10 @@ if submitted:
     st.code(out, language="markdown")
     st.download_button("下載為 .txt", data=out, file_name=f"mkPRO_{date.today()}.txt")
 
-# ---- PDF 生成（使用 reportlab）----
-def build_pdf_from_text(text: str, title: str = "行銷稿件"):
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm
-
-    styleN, styleH, styleC, styleTitle, styleSlogan = _pdf_styles()
-
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=36, bottomMargin=30)
-    story = []
-    _brand_header(story, styleTitle, styleSlogan, styleC)
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(title, styleH))
-    # 將使用者的文本逐段放入（保留換行）
-    for para in text.split("\n"):
-        if para.strip() == "":
-            story.append(Spacer(1, 6))
-        else:
-            story.append(Paragraph(para, styleN))
-
-    doc.build(story)
-    buf.seek(0)
-    return buf
-
 st.markdown("---")
-st.subheader("🧾 下載 PDF")
+st.subheader("🧾 下載 PDF（自動移除/轉換 emoji）")
 if OUT_TEXT:
-    pdf_buf = build_pdf_from_text(OUT_TEXT, title=f"{channel}｜{topic}")
+    pdf_buf = generate_pdf(content=OUT_TEXT, title=f"{channel}｜{topic}")
     st.download_button(
         "下載 PDF",
         data=pdf_buf.getvalue(),
@@ -322,5 +228,3 @@ if OUT_TEXT:
     )
 else:
     st.info("請先產生內容，再下載 PDF。")
-
-st.caption("提示：PDF 會自動套用 brand.json 的品牌抬頭與你上傳的 NotoSansTC 字型；系統也會自動移除重複句子。")
