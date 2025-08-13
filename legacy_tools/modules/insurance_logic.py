@@ -141,7 +141,7 @@ def _engine(p: Profile) -> List[Dict[str, Any]]:
     if _has(p.goals, "退休", "年金", "現金流"):
         bucket = max(p.total_budget_wan - 100, 0)  # 示意切分
         res.append({
-            "name": "年金/變額年金（退休現金流）",
+            "name": "年金（退休現金流）",
             "why": "把一次資金換成長期現金流，降低長壽風險與市場波動壓力。",
             "fit": [_age_band(p.age), "現金流導向"],
             "description": (
