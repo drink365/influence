@@ -218,8 +218,8 @@ def dedupe_lines(text: str) -> str:
 # -----------------------------
 def gen_fb(aud, topic, pts, cta, brand_sig, cfg, use_quote, use_hashtags):
     title = f"【{topic}｜{aud}不可不知】"
-    head = f"你是否也在想：{pts[0] if pts else '如何更有效把傳承做對？'}"
-    lines = [title, head, ""]
+    # ✅ 這裡調整：'你是否也在想：' 後面強制空一行
+    lines = [title, "你是否也在想：", ""]
     lines += [f"・{p}" for p in pts]
     if use_quote:
         q = pick_brand_quote(cfg)
