@@ -72,7 +72,12 @@ def _pdf_from_results(
             "",
         ]
 
-    pdf_buf = generate_pdf(content="\n".join(lines), title="保單策略建議")
+    pdf_buf = generate_pdf(
+        content="\n".join(lines),
+        title="保單策略建議",
+        logo_path="logo.png",
+        footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
+    )
     return pdf_buf.getvalue()
 
 # ---------- 介面 ----------
@@ -187,7 +192,7 @@ with colA:
         mime="text/plain",
     )
 
-# PDF
+# PDF（含 logo 與頁尾）
 pdf_bytes = _pdf_from_results(
     int(age), gender, float(budget), currency, int(pay_years), goals, recs
 )
