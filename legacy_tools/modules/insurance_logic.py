@@ -1,16 +1,17 @@
 # legacy_tools/modules/insurance_logic.py
-# 保單策略引擎（新版專用，已統一用語：定期壽險；前期加保文案依年期自動調整）
+# 保單策略引擎（新版專用，已統一用語：定期壽險；前期加保文案依年期自動調整，且保留逗號）
 # API：
 #   recommend_strategies(age, gender, budget, currency, pay_years, goals)
-#   並對外輸出 FX_USD_TWD（頁面用來顯示分級一致的匯率換算）
+#   導出 FX_USD_TWD（供頁面顯示分級換算一致）
+
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Any, Tuple
 
 __all__ = ["recommend_strategies", "FX_USD_TWD"]
 
-# === 匯率設定（可透過 st.secrets 改造：此處先提供常數）===
-FX_USD_TWD: float = 31.0  # 1 萬USD ≈ 31 萬TWD（分級判斷用）
+# === 匯率設定（可改為讀 secrets；此處提供預設）===
+FX_USD_TWD: float = 31.0  # 1 萬 USD ≈ 31 萬 TWD（分級判斷用）
 
 # === 幫手：幣別正規化 ===
 def _normalize_currency(cur: str | None) -> Tuple[str, str, float]:
@@ -29,17 +30,17 @@ def _normalize_currency(cur: str | None) -> Tuple[str, str, float]:
 class Profile:
     age: int
     gender: str
-    total_budget_wan: float     # 總預算（萬，幣別視 currency）
+    total_budget_wan: float     # 總預算（萬，依 currency）
     currency: str               # 'TWD' / 'USD'
     currency_symbol: str        # 'NT$' / 'US$'
-    to_twd_multiplier: float    # 換算到「萬TWD」的倍率
+    to_twd_multiplier: float    # 轉換到「萬TWD」的倍率
     pay_years: int
     goals: List[str]
 
 # === 分級（門檻以「萬TWD」為基準）===
 def _tier(total_budget_wan_in_twd: float) -> str:
     """
-    門檻（單位：萬TWD）
+    門檻（單位：萬 TWD）
       - 高端：≥ 1000 萬
       - 進階：300–999 萬
       - 標準：100–299 萬
@@ -122,9 +123,6 @@ def _engine(p: Profile) -> List[Dict[str, Any]]:
                 f"{accum}"
                 "後期可利用保單借款做資金調度或作為稅源預留。"
             )
-            # 若為 1 年，去掉多餘逗號
-            if accum == "":
-                desc = desc.replace("，後期", "，後期")
             res.append({
                 "name": "增額終身壽險（高現金價值型）",
                 "why": "穩定累積保單現金價值，提供保單借款與傳承效率；可作為稅源或企業傳承準備。",
