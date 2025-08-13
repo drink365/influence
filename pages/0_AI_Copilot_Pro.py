@@ -5,12 +5,12 @@ from datetime import date
 import os, json, random, re
 from io import BytesIO
 
-# ★ 共用 PDF 引擎（內含 emoji 清理）
+# 共用 PDF 引擎（內含 emoji 清理，但頁面不特別說明）
 from legacy_tools.modules.pdf_generator import generate_pdf
 
 st.set_page_config(page_title="AI 行銷助手 Pro（品牌金句＋Hashtag＋PDF）", page_icon="🪄", layout="wide")
 st.title("🪄 AI 行銷助手 Pro")
-st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。讀取 brand.json 的金句與 Hashtag；PDF 由共用引擎產生（含 emoji 清理）。")
+st.caption("輸入重點 → 一鍵生成 FB 貼文 / LINE 私訊 / 演講開場。讀取 brand.json 的金句與 Hashtag，並可匯出 PDF。")
 
 # -----------------------------
 # 讀取 brand.json（根目錄）
@@ -80,7 +80,7 @@ with st.form("mk_pro"):
     with c3:
         brand_sig = st.text_input("🏷️ 品牌簽名（可留空）", CFG.get("default_brand_signature", ""))
         max_len = st.slider("✂️ 建議字數上限", 80, 500, 220, step=10)
-        with_emoji = st.toggle("🙂 適量加入 Emoji（僅網頁顯示；PDF 會自動轉換/移除）", value=True)
+        with_emoji = st.toggle("🙂 適量加入 Emoji", value=True)
 
     preset = st.radio("⚡ 快速模板", ["自訂輸入", "稅源預留（高資產）", "壯世代轉型（行銷）", "企業主接班（家業/家產/家風）"], index=0)
     use_quote = st.toggle("🧡 自動插入品牌金句", value=True)
