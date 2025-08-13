@@ -1,284 +1,241 @@
 # legacy_tools/modules/pdf_generator.py
-from io import BytesIO
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.units import mm, cm
-from reportlab.lib import colors
-from datetime import date
-import os, json, re
+# 簡潔穩定的 PDF 產生器（繁中字型、Logo、頁首單位註記＋生成日期）
+from __future__ import annotations
 
-# ---------- 基本載入 ----------
-def _load_brand():
-    for p in [
-        os.path.join(os.getcwd(), "brand.json"),
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "brand.json")),
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "brand.json")),
-    ]:
+import io
+import os
+import re
+from typing import Optional, Tuple
+from datetime import datetime
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors
+
+# 預設字型設定
+_DEFAULT_FONT_NAME = "Helvetica"          # fallback
+_CJK_FONT_NAME = "NotoSansTC"             # 目標字型名稱
+_CJK_FONT_FILE = "NotoSansTC-Regular.ttf" # 建議放在 repo 根目錄或 pages/ 或 assets/
+
+# 文字樣式
+_TITLE_FONT_SIZE = 18
+_BODY_FONT_SIZE = 12
+_UNIT_FONT_SIZE = 9
+_META_FONT_SIZE = 9         # 生成日期等小字
+_FOOTER_FONT_SIZE = 8
+
+# 版面設定
+_PAGE_MARGIN_LR = 48    # 左右邊界
+_PAGE_MARGIN_T = 56     # 上邊界
+_PAGE_MARGIN_B = 56     # 下邊界
+_LINE_HEIGHT = 18       # 文字行距（對應 12pt 字體）
+_MAX_LOGO_WIDTH = 140   # Logo 最大寬度（pt）
+
+# 預設頁首註記
+_DEFAULT_UNIT_NOTE = "本報告所有金額單位：萬元（TWD）"
+_DEFAULT_DATE_LABEL = "生成日期"           # 友善用語（取代「出具日期」）
+
+
+def _register_cjk_font() -> str:
+    """
+    嘗試註冊 NotoSansTC；找不到就使用內建 Helvetica。
+    回傳可用的 fontName。
+    """
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    search_paths = [
+        _CJK_FONT_FILE,
+        os.path.join("pages", _CJK_FONT_FILE),
+        os.path.join("assets", _CJK_FONT_FILE),
+        os.path.join("static", _CJK_FONT_FILE),
+        os.path.join("fonts", _CJK_FONT_FILE),
+    ]
+    for p in search_paths:
         if os.path.exists(p):
             try:
-                with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                pdfmetrics.registerFont(TTFont(_CJK_FONT_NAME, p))
+                return _CJK_FONT_NAME
             except Exception:
-                pass
-    return {"brand_name": "永傳家族辦公室", "slogan": "傳承您的影響力"}
+                continue
+    return _DEFAULT_FONT_NAME
 
-def _find_font():
-    for p in [
-        os.path.join(os.getcwd(), "NotoSansTC-Regular.ttf"),
-        os.path.join(os.getcwd(), "pages", "NotoSansTC-Regular.ttf"),
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "NotoSansTC-Regular.ttf")),
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "NotoSansTC-Regular.ttf")),
-        "NotoSansTC-Regular.ttf",
-    ]:
-        if os.path.exists(p):
-            return p
-    return None
 
-def _find_image_by_names(names):
-    for name in names:
-        p = os.path.join(os.getcwd(), name)
-        if os.path.exists(p):
-            return p
-    return None
+def _sanitize_text(s: str) -> str:
+    """
+    移除常見會造成嵌字失敗的字元（包含多數 emoji、控制字元），避免 PDF 出現方框或錯位。
+    - 移除 BMP 以外的字元（大多數 emoji）
+    - 移除控制字元（除了常用換行）
+    """
+    if not s:
+        return ""
+    # 移除非 BMP（\U00010000 以上）
+    s = re.sub(r"[\U00010000-\U0010FFFF]", "", s)
+    # 移除控制字元（保留 \n、\r、\t）
+    s = re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]", "", s)
+    return s
 
-def _find_logo():
-    return _find_image_by_names(["logo-橫式彩色.png", "logo.png", "logo.jpg", "logo.jpeg"])
 
-def _find_qrcode():
-    return _find_image_by_names(["qrcode.png", "qrcode.jpg", "qrcode.jpeg"])
+def _wrap_text(text: str, max_width: float, canvas_obj: canvas.Canvas, font_name: str, font_size: int) -> list:
+    """
+    簡單斷行：依據字串測寬度在 max_width 內換行。
+    備註：針對中文以字元為單位斷行，英文以空白為界會更好，不過此處以穩定簡化為主。
+    """
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
-# ---------- Emoji 清理（加強版） ----------
-_EMOJI_MAP = {
-    "💡": "(重點)",
-    "👉": "→",
-    "🌱": "(一起前進)",
-    "🪄": "",
-    "🧮": "",
-    "🗺️": "",
-    "📦": "",
-    "📅": "",
-    "📝": "",
-    "✨": "",
-    "❤️": "",
-    "👍": "",
-    "🔒": "",
-    "💼": "",
-    "🧭": "",
-}
+    lines = []
+    for raw_line in (text or "").splitlines():
+        line = raw_line.rstrip()
+        if not line:
+            lines.append("")
+            continue
 
-# Variation Selector-16、Zero Width Joiner、膚色修飾等
-VS16 = "\uFE0F"
-ZWJ  = "\u200D"
-_EMOJI_EXTRA = re.compile(f"[{VS16}{ZWJ}\U0001F3FB-\U0001F3FF]")
-
-_EMOJI_RE = re.compile(
-    "[" 
-    "\U0001F300-\U0001F6FF"
-    "\U0001F700-\U0001F77F"
-    "\U0001F780-\U0001F7FF"
-    "\U0001F800-\U0001F8FF"
-    "\U0001F900-\U0001F9FF"
-    "\U0001FA00-\U0001FAFF"
-    "\U00002600-\U000026FF"
-    "\U00002700-\U000027BF"
-    "]", re.UNICODE
-)
-
-def _sanitize_emoji(text: str) -> str:
-    if not text:
-        return text
-    for k, v in _EMOJI_MAP.items():
-        text = text.replace(k, v)
-    text = _EMOJI_RE.sub("", text)
-    text = _EMOJI_EXTRA.sub("", text)
-    return text
-
-# ---------- 樣式 & 抬頭 ----------
-def _styles():
-    font_path = _find_font()
-    font_name = "Helvetica"
-    if font_path:
-        try:
-            pdfmetrics.registerFont(TTFont("NotoSansTC", font_path))
-            font_name = "NotoSansTC"
-        except Exception:
-            pass
-    styles = getSampleStyleSheet()
-    styleN = ParagraphStyle(name="NormalTC", parent=styles["Normal"], fontName=font_name, fontSize=12, leading=16)
-    styleH = ParagraphStyle(name="HeadingTC", parent=styles["Heading2"], fontName=font_name, fontSize=14, leading=18, spaceAfter=10)
-    styleC = ParagraphStyle(name="CenterTC", parent=styles["Normal"], fontName=font_name, fontSize=10, alignment=TA_CENTER)
-    styleTitle = ParagraphStyle(name="BrandTitle", parent=styles["Title"], fontName=font_name, fontSize=20, leading=24, spaceAfter=4)
-    styleSlogan = ParagraphStyle(name="BrandSlogan", parent=styles["Normal"], fontName=font_name, fontSize=11, textColor=colors.grey)
-    return styleN, styleH, styleC, styleTitle, styleSlogan
-
-def _brand_header(story, styleTitle, styleSlogan, styleC):
-    brand = _load_brand()
-    brand_name = _sanitize_emoji(brand.get("brand_name", "永傳家族辦公室"))
-    slogan = _sanitize_emoji(brand.get("slogan", "傳承您的影響力"))
-    logo = _find_logo()
-    qrcode = _find_qrcode()
-
-    if logo:
-        img = Image(logo, width=80*mm, height=20*mm); img.hAlign = "CENTER"
-        story.append(img); story.append(Spacer(1, 6))
-    story.append(Paragraph(brand_name, styleTitle))
-    story.append(Paragraph(slogan, styleSlogan))
-    story.append(Paragraph(f"產出日期：{date.today().isoformat()}", styleC))
-    story.append(Spacer(1, 6))
-    if qrcode:
-        qr = Image(qrcode, width=28*mm, height=28*mm); qr.hAlign = "RIGHT"
-        story.append(qr); story.append(Paragraph("掃描 QR 預約諮詢", styleC))
-    story.append(Spacer(1, 6))
-
-# ---------- 1) 通用 PDF ----------
-def generate_pdf(content: str = None, title: str = "報告", filename: str = "output.pdf"):
-    try:
-        import streamlit as st
-    except Exception:
-        st = None
-
-    styleN, styleH, styleC, styleTitle, styleSlogan = _styles()
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=36, bottomMargin=30)
-    story = []
-    _brand_header(story, styleTitle, styleSlogan, styleC)
-
-    if content is not None:
-        story.append(Paragraph(_sanitize_emoji(title or "報告"), styleH))
-        story.append(Spacer(1, 6))
-        for para in (content or "").split("\n"):
-            para = _sanitize_emoji(para)
-            if para.strip() == "":
-                story.append(Spacer(1, 6))
+        # 嘗試以空白切，兼顧中英文；不夠再用字元切
+        parts = re.split(r"(\s+)", line)  # 保留空白做黏回
+        buf = ""
+        for part in parts:
+            test = buf + part
+            if stringWidth(test, font_name, font_size) <= max_width:
+                buf = test
             else:
-                story.append(Paragraph(para, styleN))
-        doc.build(story); buf.seek(0); return buf
+                if buf:
+                    lines.append(buf)
+                # part 自己太長時，改以字元切
+                if stringWidth(part, font_name, font_size) > max_width:
+                    chunk = ""
+                    for ch in part:
+                        if stringWidth(chunk + ch, font_name, font_size) <= max_width:
+                            chunk += ch
+                        else:
+                            lines.append(chunk)
+                            chunk = ch
+                    buf = chunk
+                else:
+                    buf = part
+        if buf:
+            lines.append(buf)
+    return lines
 
-    # 相容舊頁（探索紀錄）
-    story.append(Paragraph("探索紀錄摘要", styleH)); story.append(Spacer(1, 6))
-    if st is not None and "legacy_style_result" in st.session_state:
-        story.append(Paragraph(_sanitize_emoji(st.session_state.legacy_style_result), styleN))
-        story.append(Spacer(1, 6))
-    doc.build(story); buf.seek(0); return buf
 
-# ---------- 2) 傳承地圖 PDF（雙介面） ----------
-def generate_asset_map_pdf(*args, **kwargs):
-    styleN, styleH, styleC, styleTitle, styleSlogan = _styles()
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=36, bottomMargin=30)
-    story = []
-    _brand_header(story, styleTitle, styleSlogan, styleC)
-    story.append(Paragraph("傳承地圖", styleH))
+def _draw_logo(c: canvas.Canvas, logo_path: Optional[str], x: float, y: float) -> Optional[Tuple[float, float]]:
+    """
+    繪製 Logo，回傳 (實際寬, 實際高)。若失敗回傳 None。
+    """
+    if not logo_path:
+        return None
+    try:
+        img = ImageReader(logo_path)
+        iw, ih = img.getSize()
+        # 等比縮放
+        if iw > _MAX_LOGO_WIDTH:
+            scale = _MAX_LOGO_WIDTH / float(iw)
+            dw = _MAX_LOGO_WIDTH
+            dh = ih * scale
+        else:
+            dw, dh = iw, ih
+        c.drawImage(img, x, y - dh, width=dw, height=dh, preserveAspectRatio=True, mask='auto')
+        return (dw, dh)
+    except Exception:
+        return None
 
-    asset_data = kwargs.get("asset_data")
-    chart_path = kwargs.get("chart_path")
-    table_data = kwargs.get("table_data")
-    if asset_data is not None or chart_path is not None or table_data is not None:
-        if chart_path and os.path.exists(chart_path):
-            img = Image(chart_path, width=14*cm, height=10*cm); img.hAlign = "CENTER"
-            story.append(img); story.append(Spacer(1, 6))
-        if table_data:
-            safe_table = [[_sanitize_emoji(str(c)) for c in row] for row in table_data]
-            t = Table(safe_table)
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, -1), styleN.fontName),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ]))
-            story.append(t)
-        doc.build(story); buf.seek(0); return buf
 
-    labels, values, suggestions, chart_image_bytes = None, None, None, None
-    if len(args) >= 2: labels, values = args[0], args[1]
-    if len(args) >= 3: suggestions = args[2]
-    if len(args) >= 4: chart_image_bytes = args[3]
+def generate_pdf(
+    content: str,
+    title: str = "報告",
+    logo_path: Optional[str] = None,
+    unit_note: Optional[str] = _DEFAULT_UNIT_NOTE,
+    footer_text: Optional[str] = None,
+    page_size=A4,
+    # 新增：生成日期（可關閉或自訂）
+    show_date: bool = True,
+    date_label: str = _DEFAULT_DATE_LABEL,
+    date_value: Optional[str] = None,     # None 則自動使用今日
+    date_format: str = "%Y-%m-%d",
+) -> io.BytesIO:
+    """
+    產生 PDF：
+    - content：多行文字，將依頁寬斷行
+    - title：頁首標題
+    - logo_path：品牌 Logo（可省略）
+    - unit_note：頁首右側的單位註記；預設顯示「本報告所有金額單位：萬元（TWD）」
+                 若傳入 None 或空字串，則不顯示
+    - footer_text：頁尾小字（可省略）
+    - show_date / date_label / date_value / date_format：右上角以溫和語氣顯示「生成日期」
+    - 回傳 BytesIO
+    """
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=page_size)
+    width, height = page_size
 
-    if labels and values:
-        total = sum(values) if values else 0
-        data = [["資產類別", "金額（萬元）", "佔比"]]
-        for label, val in zip(labels, values):
-            pct = f"{(val / total * 100):.1f}%" if total > 0 else "0.0%"
-            data.append([_sanitize_emoji(str(label)), f"{val:,.0f}", pct])
-        if total > 0: data.append(["總資產", f"{total:,.0f}", "100.0%"])
-        t = Table(data, colWidths=[60*mm, 50*mm, 30*mm])
-        t.setStyle(TableStyle([
-            ("FONTNAME", (0,0), (-1,-1), styleN.fontName),
-            ("FONTSIZE", (0,0), (-1,-1), 12),
-            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-            ("ALIGN", (1,1), (-1,-1), "RIGHT"),
-        ]))
-        story.append(t); story.append(Spacer(1, 10))
+    # 字型
+    font_name = _register_cjk_font()
+    c.setTitle(_sanitize_text(title))
 
-    if chart_image_bytes:
-        story.append(Paragraph("資產結構圖", styleH))
-        img = Image(chart_image_bytes, width=150*mm, height=150*mm); img.hAlign = "CENTER"
-        story.append(img); story.append(Spacer(1, 10))
+    # 頁首：Logo + Title + 右上角（單位註記／生成日期）
+    x = _PAGE_MARGIN_LR
+    y = height - _PAGE_MARGIN_T
 
-    if suggestions:
-        story.append(Paragraph("系統建議摘要", styleH))
-        for s in suggestions:
-            story.append(Paragraph(_sanitize_emoji(f"• {s}"), styleN))
-
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(_sanitize_emoji("《影響力》傳承策略平台｜永傳家族辦公室 https://gracefo.com"), styleC))
-    doc.build(story); buf.seek(0); return buf
-
-# ---------- 3) 保單策略 PDF（雙介面） ----------
-def generate_insurance_strategy_pdf(*args, **kwargs):
-    styleN, styleH, styleC, styleTitle, styleSlogan = _styles()
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=36, bottomMargin=30)
-    story = []
-    _brand_header(story, styleTitle, styleSlogan, styleC)
-    story.append(Paragraph("保單策略建議", styleH))
-
-    strategy_text = kwargs.get("strategy_text")
-    chart_path = kwargs.get("chart_path")
-    if strategy_text is not None or chart_path is not None:
-        if chart_path and os.path.exists(chart_path):
-            img = Image(chart_path, width=14*cm, height=10*cm); img.hAlign = "CENTER"
-            story.append(img); story.append(Spacer(1, 6))
-        for para in (strategy_text or "").split("\n"):
-            para = _sanitize_emoji(para)
-            story.append(Paragraph(para if para.strip() else " ", styleN))
-        doc.build(story); buf.seek(0); return buf
-
-    if len(args) >= 6:
-        age, gender, budget, currency, pay_years, goals = args[:6]
+    # Logo（左上）
+    logo_drawn = _draw_logo(c, logo_path, x, y)
+    if logo_drawn:
+        lw, lh = logo_drawn
+        title_y = y - (lh + 8)  # Logo 下方 8pt 顯示標題
     else:
-        age = gender = budget = currency = pay_years = goals = None
-    strategies = args[6] if len(args) >= 7 else None
+        title_y = y
 
-    if age is not None:
-        head = f"年齡：{age}　性別：{gender}　預算：{currency}{budget:,}　繳費年期：{pay_years} 年"
-        story.append(Paragraph(_sanitize_emoji(head), styleN))
+    # Title
+    c.setFont(font_name, _TITLE_FONT_SIZE)
+    c.setFillColor(colors.black)
+    c.drawString(x, title_y, _sanitize_text(title))
 
-    if goals:
-        story.append(Spacer(1, 4)); story.append(Paragraph("目標：", styleH))
-        for g in goals: story.append(Paragraph(_sanitize_emoji(f"• {g}"), styleN))
+    # 右上角：單位註記（第一行）＋ 生成日期（第二行）
+    right_x = width - _PAGE_MARGIN_LR
+    meta_y = title_y
+    if unit_note:
+        c.setFont(font_name, _UNIT_FONT_SIZE)
+        c.setFillColor(colors.HexColor("#6b7280"))  # slate-500 類似
+        unit_text = _sanitize_text(str(unit_note))
+        utw = c.stringWidth(unit_text, font_name, _UNIT_FONT_SIZE)
+        c.drawString(right_x - utw, meta_y, unit_text)
+        meta_y -= (_UNIT_FONT_SIZE + 3)  # 下一行往下
 
-    if strategies:
-        story.append(Spacer(1, 6)); story.append(Paragraph("初步策略建議：", styleH))
-        for s in strategies:
-            name = s.get("name", "策略")
-            why  = s.get("why", "")
-            fit  = ", ".join(s.get("fit", []))
-            desc = s.get("description", "")
-            story.append(Paragraph(_sanitize_emoji(f"【{name}】"), styleN))
-            if why:  story.append(Paragraph(_sanitize_emoji(f"理由：{why}"), styleN))
-            if fit:  story.append(Paragraph(_sanitize_emoji(f"適合對象：{fit}"), styleN))
-            if desc: story.append(Paragraph(_sanitize_emoji(f"結構說明：{desc}"), styleN))
-            story.append(Spacer(1, 6))
+    if show_date:
+        c.setFont(font_name, _META_FONT_SIZE)
+        c.setFillColor(colors.HexColor("#6b7280"))
+        date_str = date_value or datetime.now().strftime(date_format)
+        date_text = f"{date_label}：{date_str}"
+        date_text = _sanitize_text(date_text)
+        dtw = c.stringWidth(date_text, font_name, _META_FONT_SIZE)
+        c.drawString(right_x - dtw, meta_y, date_text)
 
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(_sanitize_emoji("下一步：若這份策略讓您浮現了想法，歡迎預約對談，讓保單成為資產任務的助手。"), styleN))
-    story.append(Paragraph(_sanitize_emoji("《影響力》傳承策略平台｜永傳家族辦公室 https://gracefo.com"), styleC))
-    doc.build(story); buf.seek(0); return buf
+    # 內容起始 Y（標題下一行再留 16pt）
+    cur_y = min(meta_y, title_y) - 16
+
+    # 內容框寬度
+    content_max_w = width - _PAGE_MARGIN_LR * 2
+
+    # 內容文字
+    c.setFont(font_name, _BODY_FONT_SIZE)
+    c.setFillColor(colors.black)
+
+    lines = _wrap_text(_sanitize_text(content or ""), content_max_w, c, font_name, _BODY_FONT_SIZE)
+    for line in lines:
+        if cur_y < _PAGE_MARGIN_B + _LINE_HEIGHT:
+            # 換頁
+            c.showPage()
+            c.setFont(font_name, _BODY_FONT_SIZE)
+            cur_y = height - _PAGE_MARGIN_T
+        c.drawString(_PAGE_MARGIN_LR, cur_y, line)
+        cur_y -= _LINE_HEIGHT
+
+    # 頁尾（可選）
+    if footer_text:
+        c.setFont(font_name, _FOOTER_FONT_SIZE)
+        c.setFillColor(colors.HexColor("#9ca3af"))  # 淺灰
+        ft = _sanitize_text(footer_text)
+        c.drawString(_PAGE_MARGIN_LR, _PAGE_MARGIN_B - 10, ft)
+
+    c.save()
+    buf.seek(0)
+    return buf
