@@ -1,79 +1,36 @@
-# pages/0_Tools.py
-# 🧰 顧問工具庫（含 AI 助手卡片＋品牌 Logo）
-import os
+# pages/Tools.py
+# 顧問工具庫（家族客戶視角文案）
+from __future__ import annotations
+
 import streamlit as st
-from nav_shim import goto
 
-st.set_page_config(page_title="顧問工具庫｜influence", page_icon="🧰", layout="wide")
+st.set_page_config(page_title="顧問工具庫", layout="wide")
 
-def find_logo():
-    # 回傳可被 st.image 讀取的「實體檔案路徑」
-    for p in ["logo.png", "logo.jpg", "logo.jpeg", "logo-橫式彩色.png", os.path.join("pages", "logo.png")]:
-        abs_p = os.path.join(os.getcwd(), p)
-        if os.path.exists(abs_p):
-            return abs_p
-    return None
+st.markdown("""
+<h2 style="margin-bottom:.5rem;color:#0f172a;">顧問工具庫｜3 分鐘看懂、5 分鐘拿到摘要</h2>
+<p style="color:#334155;margin:0 0 1rem 0;">
+  把專業變成家人的安心：遺產稅試算、資產地圖、保單策略，一次完成、一次帶走。
+</p>
+<div style="display:flex;flex-wrap:wrap;gap:.75rem;">
+  <span style="background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:.4rem .9rem;">
+    家族資產地圖：輸入資產與負債（單位：萬元），立即看見家族版圖與重點比例
+  </span>
+  <span style="background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:.4rem .9rem;">
+    家族遺產稅試算：用萬元估稅、列出扣除項、預留稅源更從容
+  </span>
+  <span style="background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:.4rem .9rem;">
+    家族保單策略建議：依目標與預算產出策略，附可下載的 TXT／PDF 摘要
+  </span>
+</div>
+<p style="margin-top:1rem;color:#0f172a;"><b>建議流程：</b>從「家族資產地圖」開始 → 釐清版圖與重點 → 進一步做稅務試算與保單策略。</p>
+""", unsafe_allow_html=True)
 
-logo_path = find_logo()
-
-# ---- 樣式（保留卡片網格）----
-st.markdown(
-    """
-    <style>
-    .grid {display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:16px; margin-top: 6px;}
-    .card {padding:16px;border-radius:16px;border:1px solid #eee;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.06);transition: transform .08s ease, box-shadow .08s ease;}
-    .card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.08);}
-    .card h4{margin:0 0 6px 0;}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# ---- Topbar：左標題、右 Logo（用 st.image，避免破圖）----
-col_title, col_logo = st.columns([1, 0.25])
-with col_title:
-    st.markdown("## 🧰 顧問工具庫")
-with col_logo:
-    if logo_path:
-        st.image(logo_path, use_container_width=True)
-
-st.caption("把專業變成成交力：遺產稅試算、傳承地圖、保單策略、AI 行銷助手。")
-
-# ---- 卡片網格 ----
-st.markdown('<div class="grid">', unsafe_allow_html=True)
-
-# 1 遺產稅
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("#### 🧮 遺產稅試算")
-st.write("快速估算遺產稅與扣除項，支援 PDF 匯出。")
-if st.button("打開｜遺產稅試算"):
-    goto(st, "pages/Tools_EstateTax.py")
-st.markdown('</div>', unsafe_allow_html=True)
-
-# 2 傳承地圖
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("#### 🗺️ 傳承地圖（完整版）")
-st.write("輸入六大資產，生成圓餅圖＋現金流表＋PDF。")
-if st.button("打開｜傳承地圖"):
-    goto(st, "pages/Tools_AssetMap.py")
-st.markdown('</div>', unsafe_allow_html=True)
-
-# 3 保單策略
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("#### 📦 保單策略建議")
-st.write("依目標與預算產出策略建議，輔助提案。")
-if st.button("打開｜保單策略建議"):
-    goto(st, "pages/Tools_InsuranceStrategy.py")
-st.markdown('</div>', unsafe_allow_html=True)
-
-# 4 AI 助手
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("#### 🪄 AI 行銷助手 Pro")
-st.write("讀 brand.json｜金句/Hashtag｜PDF 匯出。")
-if st.button("打開｜AI 行銷助手"):
-    goto(st, "pages/0_AI_Copilot_Pro.py")
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---")
-st.caption("PDF 風格已統一：品牌抬頭與字型由 brand.json / NotoSansTC 控制。若根目錄有 logo / qrcode 也會自動加入 PDF。")
+
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.page_link("pages/Tools_AssetMap.py", label="🗺️ 前往：家族資產地圖")
+with c2:
+    st.page_link("pages/Tools_EstateTax.py", label="🧮 前往：家族遺產稅試算")
+with c3:
+    st.page_link("pages/Tools_InsuranceStrategy.py", label="📦 前往：家族保單策略建議")
