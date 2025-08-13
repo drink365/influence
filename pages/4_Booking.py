@@ -1,5 +1,16 @@
 # pages/Booking.py
-# 預約：整合 BookingRepo/EventRepo、偏好時間下拉、重點(≥5字)必填、SMTP 通知（大寫 SMTP 設定）
+# 預約：日期選擇 + 時段下拉（上午/下午/不限） + 必填驗證(≥5字) + SMTP 通知 + BookingRepo/EventRepo
+# --------------------------------------------------------------------
+# st.secrets 設定（與你另一 repo 一致，使用大寫 SMTP）：
+# [SMTP]
+# HOST = "smtp.gmail.com"
+# PORT = 587
+# USER = "your_account@gmail.com"
+# PASS = "your_app_password"
+# FROM = "your_account@gmail.com"
+# ADMIN_EMAIL = "123@gracefo.com"
+# # 企業郵件如走 465，可把 PORT 改成 465（程式仍用 STARTTLS，若需改 SSL 另告知）
+# --------------------------------------------------------------------
 
 from __future__ import annotations
 
@@ -13,7 +24,7 @@ import streamlit as st
 # ==== 頁面設定 ====
 st.set_page_config(page_title="預約", page_icon="📅", layout="centered")
 
-# ==== 匯入資料倉庫（若無該模組，使用安全後備）====
+# ==== 匯入資料倉庫（若無模組則安全後備）====
 USE_REPOS = True
 try:
     from src.repos.booking_repo import BookingRepo
@@ -53,11 +64,11 @@ name = st.text_input("姓名/稱呼 *")
 phone = st.text_input("手機 *")
 email = st.text_input("Email（可選）")
 
-slot = st.selectbox(
-    "偏好時間（下拉） *",
-    ["這週三 下午", "這週五 晚上", "下週一 上午", "自訂（請於備註說明）"],
-    index=0
-)
+col_time1, col_time2 = st.columns(2)
+with col_time1:
+    meet_date: date = st.date_input("偏好日期 *", value=date.today())
+with col_time2:
+    period = st.selectbox("偏好時段（下拉） *", ["不限", "上午（09:00–12:00）", "下午（13:00–17:00）"], index=0)
 
 focus = st.text_area(
     "想諮詢的重點（必填，至少 5 個字） *",
@@ -79,12 +90,12 @@ def _invalid_reason() -> Optional[str]:
         return "請勾選同意隱私權政策與資料使用說明。"
     return None
 
-# ==== SMTP 設定（沿用你另一個 repo 的命名：大寫 SMTP）====
+# ==== SMTP 設定（使用大寫 SMTP）====
 def _smtp_cfg() -> Tuple[Optional[Dict[str, Any]], Optional[list]]:
     s = st.secrets.get("SMTP", {})
     req = ["HOST", "PORT", "USER", "PASS", "FROM", "ADMIN_EMAIL"]
     miss = [k for k in req if not s.get(k)]
-    if miss: 
+    if miss:
         return None, miss
     return s, None
 
@@ -100,8 +111,6 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
             msg["Subject"] = subject
             msg["From"] = cfg["FROM"]
             msg["To"] = to_email
-            # 可選：回覆時直接回到客戶（這封是管理者通知才需要）
-            # msg["Reply-To"] = to_email
             msg.set_content(body)
             server.send_message(msg)
         return True
@@ -109,9 +118,18 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         return False
 
 # ==== 送出 ====
-disabled_btn = (not agree) or (not name.strip()) or (not phone.strip()) or (len(focus.strip()) < 5)
+disabled_btn = (
+    (not agree) or
+    (not name.strip()) or
+    (not phone.strip()) or
+    (len(focus.strip()) < 5)
+)
 if st.button("送出預約", type="primary", disabled=disabled_btn):
-    timeslot_str = slot if slot != "自訂（請於備註說明）" else f"{slot}｜{note.strip()}" if note.strip() else slot
+    date_str = meet_date.strftime("%Y-%m-%d")
+    # timeslot 欄位沿用舊結構（方便後端相容）：日期｜時段｜（備註）
+    timeslot_str = f"{date_str}｜{period}"
+    if note.strip():
+        timeslot_str += f"｜{note.strip()}"
 
     # 建立資料（優先用你的 Repo；若沒有就後備）
     if USE_REPOS:
@@ -121,19 +139,25 @@ if st.button("送出預約", type="primary", disabled=disabled_btn):
                 "name": name.strip(),
                 "phone": phone.strip(),
                 "email": email.strip() or None,
-                "timeslot": timeslot_str,
+                "timeslot": timeslot_str,          # 仍存 timeslot，內含 日期 + 時段 (+ 備註)
                 "focus": focus.strip(),
                 "note": note.strip() or None,
+                "meet_date": date_str,             # 若你的表結構支援，也同時存明確欄位
+                "meet_period": period,
                 "created_at": datetime.now().isoformat(timespec="seconds"),
             })
         except Exception:
             bid = int(datetime.now().timestamp())  # 後備：時間戳代替
         try:
-            EventRepo.log(case_id or "N/A", "BOOKING_CREATED", {"booking_id": bid})
+            EventRepo.log(case_id or "N/A", "BOOKING_CREATED", {
+                "booking_id": bid,
+                "meet_date": date_str,
+                "meet_period": period
+            })
         except Exception:
             pass
     else:
-        bid = int(datetime.now().timestamp())  # 後備：時間戳代替
+        bid = int(datetime.now().timestamp())
 
     # 畫面回饋
     st.success("預約資訊已送出，顧問將於一個工作日內與您聯繫！")
@@ -149,7 +173,8 @@ if st.button("送出預約", type="primary", disabled=disabled_btn):
             f"姓名：{name}\n"
             f"手機：{phone}\n"
             f"Email：{email or '—'}\n"
-            f"偏好時間：{timeslot_str}\n"
+            f"偏好日期：{date_str}\n"
+            f"偏好時段：{period}\n"
             f"重點：\n{focus.strip()}\n\n"
             f"備註：\n{note.strip() or '—'}\n"
             f"提交時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -161,13 +186,14 @@ if st.button("送出預約", type="primary", disabled=disabled_btn):
                 f"{name} 您好：\n\n"
                 f"我們已收到您的預約，將於一個工作日內與您聯繫。\n\n"
                 f"Booking ID：#{bid}\n"
-                f"偏好時間：{timeslot_str}\n"
+                f"偏好日期：{date_str}\n"
+                f"偏好時段：{period}\n"
                 f"您提供的重點：\n{focus.strip()}\n\n"
                 f"若需更動預約，歡迎直接回覆此信。"
             )
             ok_client = send_email(email.strip(), "我們已收到您的預約", client_body)
         else:
-            ok_client = True  # 沒有 Email 就不寄，視為不阻擋流程
+            ok_client = True  # 沒填 Email 就不寄，不阻擋流程
 
         # 顯示寄信狀態
         if ok_admin:
@@ -180,7 +206,7 @@ if st.button("送出預約", type="primary", disabled=disabled_btn):
     else:
         st.markdown('<span class="warn-badge">提醒</span> 未設定 SMTP，僅畫面顯示成功，未寄出 Email。', unsafe_allow_html=True)
 
-    # 畫面備份（避免未設 SMTP 時遺漏）
+    # 螢幕備份（避免未設 SMTP 時遺漏）
     with st.expander("查看本次提交內容（可複製備份）", expanded=False):
         st.json({
             "booking_id": bid,
@@ -188,6 +214,8 @@ if st.button("送出預約", type="primary", disabled=disabled_btn):
             "name": name.strip(),
             "phone": phone.strip(),
             "email": email.strip() or None,
+            "meet_date": date_str,
+            "meet_period": period,
             "timeslot": timeslot_str,
             "focus": focus.strip(),
             "note": note.strip() or None,
