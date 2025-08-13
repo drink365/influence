@@ -1,4 +1,5 @@
 # pages/Tools_EstateTax.py
+# 遺產稅試算（統一單位：萬元 TWD）— 家族客戶版文案
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
@@ -46,13 +47,14 @@ class EstateTaxCalculator:
 
 def main():
     st.set_page_config(page_title="AI 秒算遺產稅（萬元）", layout="wide")
-    st.markdown("<h1 class='main-header'>AI 秒算遺產稅</h1>", unsafe_allow_html=True)
-    st.caption("所有金額單位：**萬元（TWD）**")
 
-    st.markdown("## 請輸入資產及家庭資訊")
+    st.markdown("## 🧮 家族遺產稅試算")
+    st.caption("用清楚的試算，**提早預留稅源**，讓傳承更從容。所有金額單位：**萬元（TWD）**。")
+
+    st.markdown("### 請輸入資產與家庭資訊")
     total_assets_input = st.number_input("總資產（萬元）", min_value=1000, max_value=100000, value=5000, step=100)
     st.markdown("---")
-    st.markdown("### 請輸入家庭成員數")
+    st.markdown("### 家庭成員")
     has_spouse = st.checkbox("是否有配偶（扣除額 553 萬元）", value=False)
     adult_children_input = st.number_input("直系血親卑親屬數（每人 56 萬元）", min_value=0, max_value=10, value=0)
     parents_input = st.number_input("父母數（每人 138 萬元，最多 2 人）", min_value=0, max_value=2, value=0)
@@ -93,7 +95,7 @@ def main():
     st.markdown("---")
     def _build_pdf_bytes() -> bytes:
         lines = [
-            "AI 秒算遺產稅（摘要）",
+            "家族遺產稅試算（摘要）",
             "",
             f"總資產（萬元）：{total_assets_input:,.0f}",
             f"扣除總額（萬元）：{total_deductions:,.0f}",
@@ -106,13 +108,19 @@ def main():
             lines.append(f"{r['項目']}: {r['金額（萬元）']:,d}")
         pdf_buf = generate_pdf(
             content="\n".join(lines),
-            title="AI 秒算遺產稅",
+            title="家族遺產稅試算",
             logo_path="logo.png",
             footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
         )
         return pdf_buf.getvalue()
 
-    st.download_button("下載 PDF 摘要（萬元）", data=_build_pdf_bytes(), file_name="遺產稅試算_摘要_萬元.pdf", mime="application/pdf", use_container_width=True)
+    st.download_button(
+        "下載 PDF 摘要（萬元）",
+        data=_build_pdf_bytes(),
+        file_name="家族遺產稅試算_摘要_萬元.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
     st.caption("＊本報告為即時生成之規劃建議，僅供參考")
 
 if __name__ == "__main__":
