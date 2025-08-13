@@ -1,5 +1,5 @@
 # app.py
-# 行銷導向首頁（Hero + 品牌價值 + CTA）
+# 行銷導向首頁（Hero + 品牌價值 + CTA，已移除 Hero 內多餘藍色按鈕）
 from __future__ import annotations
 
 import base64
@@ -11,24 +11,6 @@ import streamlit as st
 # 讀取品牌設定（可選）
 # -------------------------
 def load_brand():
-    """
-    讀取 brand.json（若有），回傳 dict：
-    {
-        "app_title": "influence",
-        "app_subtitle": "家族傳承與保單策略助手",
-        "logo_paths": ["logo.png", "assets/logo.png", "static/logo.png", "images/logo.png"],
-        "booking_url": "https://www.gracefo.com/booking",
-        "contact_line": "@yourlineid",
-        "contact_email": "service@gracefo.com",
-        "hero_headline": "以專業，讓傳承更簡單。",
-        "hero_subhead": "結合法律、稅務與保險的整合式規劃，打造家族永續現金流。",
-        "bullets": [
-            "高端客製：以人為本，量身訂製最佳解決方案",
-            "一站整合：律師、會計師、財稅專家跨域協作",
-            "AI 驅動：快速產出策略與專業簡報，提高成交效率"
-        ]
-    }
-    """
     defaults = {
         "app_title": "influence",
         "app_subtitle": "家族傳承與保單策略助手",
@@ -92,17 +74,12 @@ logo_src = to_base64_src(logo_bytes) if logo_bytes else None
 CSS = """
 <style>
 /* 版頭 */
-.app-header { display:flex; align-items:center; gap: 16px; margin-bottom: 12px; }
-.app-logo img { display:block; width: 220px; height: auto; }           /* 桌機 */
-@media (max-width: 1024px) {
-  .app-logo img { width: 180px; }                                      /* 平板 */
-}
-@media (max-width: 640px) {
-  .app-logo img { width: 140px; }                                      /* 手機 */
-}
+.app-logo img { display:block; width: 220px; height: auto; }
+@media (max-width: 1024px){ .app-logo img { width: 180px; } }
+@media (max-width: 640px){ .app-logo img  { width: 140px; } }
 .app-title { line-height:1.2; }
-.app-title h1 { margin: 0; font-size: 1.8rem; }
-.app-title p  { margin: 4px 0 0 0; color: #666; }
+.app-title h1 { margin:0; font-size:1.8rem; }
+.app-title p  { margin:4px 0 0 0; color:#666; }
 
 /* Hero Banner */
 .hero {
@@ -113,47 +90,31 @@ CSS = """
   box-shadow: 0 4px 18px rgba(30, 60, 120, 0.06);
   margin: 8px 0 18px 0;
 }
-.hero h2 {
-  margin: 0 0 6px 0;
-  font-size: 2rem;
-  line-height: 1.25;
-  color: #1e2a45;
-}
-.hero p.sub {
-  margin: 0 0 12px 0;
-  font-size: 1.05rem;
-  color: #3b4963;
-}
-.badges { display:flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.hero h2 { margin:0 0 6px 0; font-size:2rem; line-height:1.25; color:#1e2a45; }
+.hero p.sub { margin:0 0 12px 0; font-size:1.05rem; color:#3b4963; }
+.badges { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
 .badge {
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: #ffffff;
-  border: 1px solid #e2e8ff;
-  color: #334155;
-  font-size: 0.92rem;
+  border-radius: 999px; padding: 6px 12px; background:#fff; border:1px solid #e2e8ff;
+  color:#334155; font-size:0.92rem;
 }
-.cta-row { display:flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-.cta a, .cta button {
-  display:inline-block; border-radius: 10px; padding: 10px 16px; border: 1px solid #2b59ff;
-  background:#2b59ff; color:#fff; text-decoration:none; font-weight:600;
+.cta-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:14px; }
+.cta a {
+  display:inline-block; border-radius: 10px; padding: 10px 16px;
+  text-decoration:none; font-weight:600;
 }
-.cta-outline {
-  background:#fff; color:#2b59ff; border:1px solid #2b59ff;
-}
-.hr-thin { border: none; border-top: 1px solid #eee; margin: 8px 0 6px 0; }
+.cta-outline { background:#fff; color:#2b59ff; border:1px solid #2b59ff; }
 
 /* 三大價值 */
-.value-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 10px; }
+.value-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; margin-top:10px; }
 .value-card {
   border-radius: 16px; padding: 16px; background:#fff; border:1px solid #eef1f7;
   box-shadow: 0 2px 10px rgba(30, 60, 120, 0.05);
 }
-.value-card h3 { margin: 0 0 6px 0; font-size: 1.05rem; color:#0f172a; }
-.value-card p { margin: 0; color:#475569; }
-@media (max-width: 900px) {
-  .value-grid { grid-template-columns: 1fr; }
-}
+.value-card h3 { margin:0 0 6px 0; font-size:1.05rem; color:#0f172a; }
+.value-card p  { margin:0; color:#475569; }
+@media (max-width: 900px){ .value-grid { grid-template-columns: 1fr; } }
+
+.hr-thin { border:none; border-top:1px solid #eee; margin:8px 0 6px 0; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -182,11 +143,21 @@ with col_title:
 st.markdown("<hr class='hr-thin' />", unsafe_allow_html=True)
 
 # -------------------------
-# Hero 行銷文案＋ CTA
+# Hero 行銷文案（已移除藍色主按鈕）
 # -------------------------
 hero_headline = BRAND.get("hero_headline")
 hero_subhead = BRAND.get("hero_subhead")
 bullets = BRAND.get("bullets", [])
+booking_url = BRAND.get("booking_url") or ""
+contact_line = BRAND.get("contact_line") or ""
+
+# 只保留外部 CTA（預約／LINE），不放主色按鈕
+cta_bits = []
+if booking_url:
+    cta_bits.append(f"<span class='cta'><a class='cta-outline' href='{booking_url}' target='_blank'>預約 30 分鐘諮詢</a></span>")
+if contact_line:
+    cta_bits.append(f"<span class='cta'><a class='cta-outline' href='https://line.me/R/ti/p/{contact_line}' target='_blank'>加入 LINE 洽詢</a></span>")
+cta_html = "<div class='cta-row'>" + "".join(cta_bits) + "</div>" if cta_bits else ""
 
 st.markdown(
     f"""
@@ -196,32 +167,14 @@ st.markdown(
       <div class="badges">
         {''.join([f"<span class='badge'>{b}</span>" for b in bullets[:4]])}
       </div>
-      <div class="cta-row">
-        <span class="cta"><a href="#" id="to-ins" onclick="return false;">立即產生保單策略</a></span>
-        {"<span class='cta'><a class='cta-outline' href='"+BRAND.get("booking_url","")+"' target='_blank'>預約 30 分鐘諮詢</a></span>" if BRAND.get("booking_url") else ""}
-        {"<span class='cta'><a class='cta-outline' href='https://line.me/R/ti/p/"+BRAND.get("contact_line","")+"' target='_blank'>加入 LINE 洽詢</a></span>" if BRAND.get("contact_line") else ""}
-      </div>
+      {cta_html}
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# 讓「立即產生保單策略」導向 Tools_InsuranceStrategy（盡量相容不同版本 Streamlit）
-clicked = st.button("👉 立即產生保單策略", key="cta_fallback_button")
-if clicked:
-    # 1) 新版 Streamlit（支援 switch_page）
-    try:
-        from streamlit_extras.switch_page_button import switch_page  # 若有外掛
-        switch_page("Tools_InsuranceStrategy")
-    except Exception:
-        try:
-            st.switch_page("pages/Tools_InsuranceStrategy.py")  # 官方 API（較新版本）
-        except Exception:
-            # 2) 若不支援，顯示引導：請從左側選單點選
-            st.info("請從左側選單進入「Tools_InsuranceStrategy」頁面。")
-
 # -------------------------
-# 三大價值（可再加深）
+# 三大價值
 # -------------------------
 v1, v2, v3 = st.columns(3, gap="small")
 with v1:
@@ -256,16 +209,17 @@ with v3:
     )
 
 # -------------------------
-# 次 CTA（頁面底部）
+# 次 CTA（唯一主動作按鈕：前往保單策略建議）
 # -------------------------
+st.markdown("---")
 col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader("下一步")
     st.markdown("- 前往 **保單策略建議**，輸入預算與目標，立即產出專屬建議。")
     st.markdown("- 需要完整家族傳承規劃？可預約顧問 1 對 1 諮詢。")
-
 with col2:
-    if st.button("前往保單策略建議", key="cta_bottom"):
+    if st.button("👉 立即產生保單策略", use_container_width=True):
+        # 嘗試多種導頁方式以提高相容性
         try:
             from streamlit_extras.switch_page_button import switch_page
             switch_page("Tools_InsuranceStrategy")
@@ -275,15 +229,15 @@ with col2:
             except Exception:
                 st.info("請從左側選單進入「Tools_InsuranceStrategy」頁面。")
 
+# -------------------------
 # 底部品牌資訊（若有設定）
-contact_email = BRAND.get("contact_email")
-contact_line = BRAND.get("contact_line")
-booking_url = BRAND.get("booking_url")
+# -------------------------
 footer_bits = []
 if booking_url:
     footer_bits.append(f"[預約諮詢]({booking_url})")
 if contact_line:
     footer_bits.append(f"[LINE]({'https://line.me/R/ti/p/'+contact_line})")
+contact_email = BRAND.get("contact_email")
 if contact_email:
     footer_bits.append(f"聯絡信箱：{contact_email}")
 
