@@ -1,16 +1,5 @@
 # pages/Booking.py
-# 預約洽談：必填驗證 + 偏好時間下拉 + Email 通知（支援 TLS/SSL）
-# ------------------------------------------------------------
-# st.secrets 設定範例（請放在部署環境的 Secrets）：
-# [smtp]
-# host = "smtp.gmail.com"
-# port = 587
-# username = "your_account@gmail.com"
-# password = "your_app_password"
-# to = "123@gracefo.com"
-# use_tls = true
-# # 可選：from = "your_account@gmail.com"   # 預設等於 username
-# ------------------------------------------------------------
+# 預約：整合 BookingRepo/EventRepo、偏好時間下拉、重點(≥5字)必填、SMTP 通知（大寫 SMTP 設定）
 
 from __future__ import annotations
 
@@ -21,9 +10,23 @@ from typing import Optional, Tuple, Dict, Any
 
 import streamlit as st
 
-st.set_page_config(page_title="預約洽談｜永傳家族辦公室", layout="wide", initial_sidebar_state="collapsed")
+# ==== 頁面設定 ====
+st.set_page_config(page_title="預約", page_icon="📅", layout="centered")
 
-# ---------- 樣式 ----------
+# ==== 匯入資料倉庫（若無該模組，使用安全後備）====
+USE_REPOS = True
+try:
+    from src.repos.booking_repo import BookingRepo
+    from src.repos.event_repo import EventRepo
+except Exception:
+    USE_REPOS = False
+
+# ==== 讀取 Session / Query 的 case_id（支援自動帶入）====
+prefill = st.session_state.get("incoming_case_id")
+q = st.query_params
+q_case = q.get("case", "") if isinstance(q.get("case"), str) else (q.get("case")[0] if q.get("case") else "")
+
+# ==== 樣式 ====
 st.markdown("""
 <style>
   .card {background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;}
@@ -34,169 +37,161 @@ st.markdown("""
 
 st.markdown("""
 <div class="card">
-  <h2 style="margin:0 0 .5rem 0;">預約洽談</h2>
+  <h2 style="margin:0 0 .5rem 0;">📅 預約顧問</h2>
   <p style="margin:0;color:#334155">
-    請留下您的聯絡資訊與想諮詢的重點，我們將於一個工作日內回覆。<br>
+    請留下您的聯絡資訊與想諮詢的重點，我們將於一個工作日內與您聯繫。<br>
     ※ 個資僅用於聯繫與提供服務，不另作其他用途。
   </p>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("---")
+st.write("")
 
-# ---------- 讀取 SMTP 設定 ----------
-def get_smtp() -> Optional[Dict[str, Any]]:
-    """
-    需提供 st.secrets["smtp"]，欄位：host, port, username, password, to
-    可選：use_tls（預設 True）、from
-    """
-    smtp_cfg = st.secrets.get("smtp")
-    if not smtp_cfg:
-        return None
-    required = ["host", "port", "username", "password", "to"]
-    if any(k not in smtp_cfg for k in required):
-        return None
-    return smtp_cfg
+# ==== 表單欄位 ====
+case_id = st.text_input("案件碼（可選）", value=prefill or q_case or "")
+name = st.text_input("姓名/稱呼 *")
+phone = st.text_input("手機 *")
+email = st.text_input("Email（可選）")
 
-SMTP_CFG = get_smtp()
+slot = st.selectbox(
+    "偏好時間（下拉） *",
+    ["這週三 下午", "這週五 晚上", "下週一 上午", "自訂（請於備註說明）"],
+    index=0
+)
 
-if not SMTP_CFG:
-    st.markdown(
-        '<span class="warn-badge">提醒</span> 未設定通知信箱（SMTP）。'
-        ' 仍可送出並在畫面顯示備份，但不會自動寄信。請於部署環境設定 <code>st.secrets["smtp"]</code>。',
-        unsafe_allow_html=True
-    )
+focus = st.text_area(
+    "想諮詢的重點（必填，至少 5 個字） *",
+    height=140,
+    placeholder="例：家族股權與遺產稅源預留，想先釐清保單與信託搭配…"
+)
+note = st.text_area("備註（可選）", height=100, placeholder="可提供方便聯絡時段、特殊需求等")
+agree = st.checkbox("我已閱讀並同意隱私權政策與資料使用說明。")
 
-# ---------- 表單 ----------
-with st.form("booking_form", clear_on_submit=False):
-    col1, col2 = st.columns(2)
-    with col1:
-        name = st.text_input("您的姓名 *", value="")
-        email = st.text_input("Email（聯絡其一即可）", value="")
-        phone = st.text_input("電話（聯絡其一即可）", value="")
-    with col2:
-        meet_date: date = st.date_input("偏好日期", value=date.today())
-        time_pref = st.selectbox(
-            "偏好時間（下拉）",
-            ["不限", "上午（09:00–12:00）", "下午（13:00–17:00）", "晚上（19:00–21:00）"],
-            index=0
-        )
-        channel = st.selectbox("會談方式", ["視訊（Google Meet）", "電話", "當面會談（會議室）"], index=0)
-
-    focus = st.text_area(
-        "想諮詢的重點（必填，至少 5 個字） *",
-        height=140,
-        placeholder="例：家族股權與遺產稅源預留，想先釐清保單與信託搭配…"
-    )
-    note = st.text_area("補充說明（選填）", height=100, placeholder="可提供方便聯絡時段、特殊需求等")
-    agree = st.checkbox("我已閱讀並同意僅用於聯繫與服務之資料使用說明")
-
-    submitted = st.form_submit_button("送出預約", type="primary", use_container_width=True)
-
-# ---------- 驗證 ----------
-def validate() -> Optional[str]:
+# ==== 驗證 ====
+def _invalid_reason() -> Optional[str]:
     if not name.strip():
-        return "請填寫姓名。"
-    if not (email.strip() or phone.strip()):
-        return "請至少提供 Email 或電話其中一項聯絡方式。"
+        return "請填寫姓名/稱呼。"
+    if not phone.strip():
+        return "請填寫手機。"
     if len(focus.strip()) < 5:
-        return "「想諮詢的重點」需至少 5 個字，請再多補充一些內容。"
+        return "「想諮詢的重點」需至少 5 個字，請再補充一些內容。"
     if not agree:
-        return "請勾選同意資料使用說明。"
+        return "請勾選同意隱私權政策與資料使用說明。"
     return None
 
-# ---------- 寄信（支援 TLS/SSL，自動 Reply-To） ----------
-def send_mail(payload: Dict[str, Any]) -> Tuple[bool, str]:
-    if not SMTP_CFG:
-        return False, "未設定 SMTP（st.secrets['smtp'] 缺少必要欄位）"
+# ==== SMTP 設定（沿用你另一個 repo 的命名：大寫 SMTP）====
+def _smtp_cfg() -> Tuple[Optional[Dict[str, Any]], Optional[list]]:
+    s = st.secrets.get("SMTP", {})
+    req = ["HOST", "PORT", "USER", "PASS", "FROM", "ADMIN_EMAIL"]
+    miss = [k for k in req if not s.get(k)]
+    if miss: 
+        return None, miss
+    return s, None
 
-    host = str(SMTP_CFG["host"])
-    port = int(SMTP_CFG["port"])
-    username = str(SMTP_CFG["username"])
-    password = str(SMTP_CFG["password"])
-    to_addr = str(SMTP_CFG["to"])
-    use_tls = SMTP_CFG.get("use_tls", True)
-
-    # From 建議使用與 SMTP 帳號相同的信箱，降低被擋風險
-    from_addr = SMTP_CFG.get("from", username)
-
-    msg = EmailMessage()
-    msg["Subject"] = f"【新預約】{payload['name']}｜{payload['meet_date']}｜{payload['time_pref']}"
-    msg["From"] = from_addr
-    msg["To"] = to_addr
-
-    # 使用者的 Email（若有）設為 Reply-To，方便一鍵回覆
-    if payload.get("email"):
-        msg["Reply-To"] = payload["email"]
-
-    body = (
-        "永傳家族辦公室：收到一筆新的預約。\n\n"
-        f"【姓名】{payload['name']}\n"
-        f"【Email】{payload['email'] or '-'}\n"
-        f"【電話】{payload['phone'] or '-'}\n"
-        f"【偏好日期】{payload['meet_date']}\n"
-        f"【偏好時間】{payload['time_pref']}\n"
-        f"【會談方式】{payload['channel']}\n"
-        f"【想諮詢的重點】\n{payload['focus']}\n\n"
-        f"【補充說明】\n{payload['note'] or '-'}\n\n"
-        f"提交時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-    msg.set_content(body)
-
+def send_email(to_email: str, subject: str, body: str) -> bool:
+    cfg, miss = _smtp_cfg()
+    if miss:
+        return False
     try:
-        if port == 465 or (use_tls is False and port == 465):
-            # SSL 直連
-            with smtplib.SMTP_SSL(host, port, timeout=20) as server:
-                server.login(username, password)
-                server.send_message(msg)
-        else:
-            # 一般 + STARTTLS（常見：587）
-            with smtplib.SMTP(host, port, timeout=20) as server:
-                server.ehlo()
-                if use_tls:
-                    server.starttls()
-                    server.ehlo()
-                server.login(username, password)
-                server.send_message(msg)
+        with smtplib.SMTP(cfg["HOST"], int(cfg["PORT"])) as server:
+            server.starttls()
+            server.login(cfg["USER"], cfg["PASS"])
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = cfg["FROM"]
+            msg["To"] = to_email
+            # 可選：回覆時直接回到客戶（這封是管理者通知才需要）
+            # msg["Reply-To"] = to_email
+            msg.set_content(body)
+            server.send_message(msg)
+        return True
+    except Exception:
+        return False
 
-        return True, f"已從 {from_addr} 寄至 {to_addr}"
-    except smtplib.SMTPAuthenticationError as e:
-        return False, f"認證失敗：請檢查帳密或應用程式密碼（{e}）"
-    except smtplib.SMTPRecipientsRefused as e:
-        return False, f"收件人被拒絕：{e}"
-    except smtplib.SMTPException as e:
-        return False, f"SMTP 例外：{e}"
-    except Exception as e:
-        return False, f"未知錯誤：{e}"
+# ==== 送出 ====
+disabled_btn = (not agree) or (not name.strip()) or (not phone.strip()) or (len(focus.strip()) < 5)
+if st.button("送出預約", type="primary", disabled=disabled_btn):
+    timeslot_str = slot if slot != "自訂（請於備註說明）" else f"{slot}｜{note.strip()}" if note.strip() else slot
 
-# ---------- 提交處理 ----------
-if submitted:
-    err = validate()
-    if err:
-        st.error(err)
+    # 建立資料（優先用你的 Repo；若沒有就後備）
+    if USE_REPOS:
+        try:
+            bid = BookingRepo.create({
+                "case_id": case_id or None,
+                "name": name.strip(),
+                "phone": phone.strip(),
+                "email": email.strip() or None,
+                "timeslot": timeslot_str,
+                "focus": focus.strip(),
+                "note": note.strip() or None,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            })
+        except Exception:
+            bid = int(datetime.now().timestamp())  # 後備：時間戳代替
+        try:
+            EventRepo.log(case_id or "N/A", "BOOKING_CREATED", {"booking_id": bid})
+        except Exception:
+            pass
     else:
-        data = {
-            "name": name.strip(),
-            "email": email.strip(),
-            "phone": phone.strip(),
-            "meet_date": meet_date.strftime("%Y-%m-%d"),
-            "time_pref": time_pref,
-            "channel": channel,
-            "focus": focus.strip(),
-            "note": note.strip(),
-        }
+        bid = int(datetime.now().timestamp())  # 後備：時間戳代替
 
-        mailed, mail_msg = send_mail(data)
+    # 畫面回饋
+    st.success("預約資訊已送出，顧問將於一個工作日內與您聯繫！")
+    st.caption(f"Booking ID：#{bid}")
 
-        st.success("✅ 我們已收到您的預約，將於一個工作日內與您聯繫。")
-        if mailed:
-            st.markdown(f'<span class="ok-badge">通知</span> {mail_msg}', unsafe_allow_html=True)
+    # 寄送通知（管理者 + 客戶）
+    cfg, miss = _smtp_cfg()
+    if cfg:
+        admin_body = (
+            f"【新預約通知】\n\n"
+            f"Booking ID：#{bid}\n"
+            f"案件碼：{case_id or 'N/A'}\n"
+            f"姓名：{name}\n"
+            f"手機：{phone}\n"
+            f"Email：{email or '—'}\n"
+            f"偏好時間：{timeslot_str}\n"
+            f"重點：\n{focus.strip()}\n\n"
+            f"備註：\n{note.strip() or '—'}\n"
+            f"提交時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        )
+        ok_admin = send_email(cfg["ADMIN_EMAIL"], f"[新預約] #{bid} {name}", admin_body)
+
+        if email.strip():
+            client_body = (
+                f"{name} 您好：\n\n"
+                f"我們已收到您的預約，將於一個工作日內與您聯繫。\n\n"
+                f"Booking ID：#{bid}\n"
+                f"偏好時間：{timeslot_str}\n"
+                f"您提供的重點：\n{focus.strip()}\n\n"
+                f"若需更動預約，歡迎直接回覆此信。"
+            )
+            ok_client = send_email(email.strip(), "我們已收到您的預約", client_body)
         else:
-            st.markdown(f'<span class="warn-badge">通知</span> {mail_msg}', unsafe_allow_html=True)
+            ok_client = True  # 沒有 Email 就不寄，視為不阻擋流程
 
-        # 螢幕備份（避免未設 SMTP 時遺漏）
-        with st.expander("查看本次提交內容（可複製備份）", expanded=False):
-            st.json(data)
+        # 顯示寄信狀態
+        if ok_admin:
+            st.markdown('<span class="ok-badge">通知</span> 已寄出管理者通知信', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="warn-badge">通知</span> 通知信寄出失敗（請檢查 SMTP 設定）', unsafe_allow_html=True)
 
-        st.markdown("---")
-        st.markdown("如需立即聯繫，歡迎直接來信 123@gracefo.com 或前往官網 www.gracefo.com 。")
+        if not ok_client and email.strip():
+            st.markdown('<span class="warn-badge">客戶通知</span> 寄給客戶的確認信失敗', unsafe_allow_html=True)
+    else:
+        st.markdown('<span class="warn-badge">提醒</span> 未設定 SMTP，僅畫面顯示成功，未寄出 Email。', unsafe_allow_html=True)
+
+    # 畫面備份（避免未設 SMTP 時遺漏）
+    with st.expander("查看本次提交內容（可複製備份）", expanded=False):
+        st.json({
+            "booking_id": bid,
+            "case_id": case_id or None,
+            "name": name.strip(),
+            "phone": phone.strip(),
+            "email": email.strip() or None,
+            "timeslot": timeslot_str,
+            "focus": focus.strip(),
+            "note": note.strip() or None,
+        })
+
+    # 清除 session 預填，避免殘留
+    st.session_state.pop("incoming_case_id", None)
