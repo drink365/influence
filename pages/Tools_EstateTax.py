@@ -1,14 +1,14 @@
 # pages/Tools_EstateTax.py
-# 遺產稅試算（全站統一單位：萬元）
+# 遺產稅試算（全站統一單位：萬元）＋ PDF（含 logo 與頁尾）
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
 import math
 import plotly.express as px
 from typing import Tuple, Dict, Any, List
-from datetime import datetime
-import time
 from dataclasses import dataclass, field
+
+from legacy_tools.modules.pdf_generator import generate_pdf
 
 # ===============================
 # 1. 常數與設定（單位：萬元）
@@ -67,52 +67,7 @@ class EstateTaxCalculator:
         return taxable_amount, round(tax_due, 0), deductions
 
 # ===============================
-# 3. 模擬試算邏輯（單位：萬元）
-# ===============================
-class EstateTaxSimulator:
-    def __init__(self, calculator: EstateTaxCalculator):
-        self.calculator = calculator
-
-    def simulate_insurance_strategy(self, total_assets: float, spouse: bool, adult_children: int,
-                                    other_dependents: int, disabled_people: int, parents: int,
-                                    premium_ratio: float, premium: float) -> Dict[str, Any]:
-        _, tax_no_insurance, _ = self.calculator.calculate_estate_tax(
-            total_assets, spouse, adult_children, other_dependents, disabled_people, parents
-        )
-        net_no_insurance = total_assets - tax_no_insurance
-        claim_amount = round(premium * premium_ratio, 0)
-        new_total_assets = total_assets - premium
-        _, tax_new, _ = self.calculator.calculate_estate_tax(
-            new_total_assets, spouse, adult_children, other_dependents, disabled_people, parents
-        )
-        net_not_taxed = round(new_total_assets - tax_new + claim_amount, 0)
-        effect_not_taxed = net_not_taxed - net_no_insurance
-        effective_estate = total_assets - premium + claim_amount
-        _, tax_effective, _ = self.calculator.calculate_estate_tax(
-            effective_estate, spouse, adult_children, other_dependents, disabled_people, parents
-        )
-        net_taxed = round(effective_estate - tax_effective, 0)
-        effect_taxed = net_taxed - net_no_insurance
-        return {
-            "沒有規劃": {
-                "總資產（萬元）": int(total_assets),
-                "預估遺產稅（萬元）": int(tax_no_insurance),
-                "家人總共取得（萬元）": int(net_no_insurance)
-            },
-            "有規劃保單": {
-                "預估遺產稅（萬元）": int(tax_new),
-                "家人總共取得（萬元）": int(net_not_taxed),
-                "規劃效果（萬元）": int(effect_not_taxed)
-            },
-            "有規劃保單 (被實質課稅)": {
-                "預估遺產稅（萬元）": int(tax_effective),
-                "家人總共取得（萬元）": int(net_taxed),
-                "規劃效果（萬元）": int(effect_taxed)
-            }
-        }
-
-# ===============================
-# 4. 介面（單位：萬元）
+# 3. 介面（單位：萬元）
 # ===============================
 def main():
     st.set_page_config(page_title="AI 秒算遺產稅（萬元）", layout="wide")
@@ -128,19 +83,11 @@ def main():
         st.markdown("---")
         st.markdown("### 請輸入家庭成員數")
         has_spouse = st.checkbox("是否有配偶（扣除額 553 萬元）", value=False)
-        adult_children_input = st.number_input(
-            "直系血親卑親屬數（每人 56 萬元）", min_value=0, max_value=10, value=0
-        )
-        parents_input = st.number_input(
-            "父母數（每人 138 萬元，最多 2 人）", min_value=0, max_value=2, value=0
-        )
+        adult_children_input = st.number_input("直系血親卑親屬數（每人 56 萬元）", min_value=0, max_value=10, value=0)
+        parents_input = st.number_input("父母數（每人 138 萬元，最多 2 人）", min_value=0, max_value=2, value=0)
         max_disabled = (1 if has_spouse else 0) + adult_children_input + parents_input
-        disabled_people_input = st.number_input(
-            "重度以上身心障礙者數（每人 693 萬元）", min_value=0, max_value=max_disabled, value=0
-        )
-        other_dependents_input = st.number_input(
-            "受撫養之兄弟姊妹、祖父母數（每人 56 萬元）", min_value=0, max_value=5, value=0
-        )
+        disabled_people_input = st.number_input("重度以上身心障礙者數（每人 693 萬元）", min_value=0, max_value=max_disabled, value=0)
+        other_dependents_input = st.number_input("受撫養之兄弟姊妹、祖父母數（每人 56 萬元）", min_value=0, max_value=5, value=0)
 
     calculator = EstateTaxCalculator(TaxConstants())
     try:
@@ -186,14 +133,35 @@ def main():
         })
         st.table(df_tax)
 
+    # 下載 PDF（含 logo 與頁尾）
     st.markdown("---")
-    st.markdown("## 家族傳承策略建議（方向）")
-    st.markdown(
-        """
-        1. 規劃保單：透過保險預留稅源。  
-        2. 提前贈與：利用免稅贈與逐年轉移財富。  
-        3. 分散配置：透過合理資產配置降低稅負。
-        """
+    def _build_pdf_bytes() -> bytes:
+        lines = [
+            "AI 秒算遺產稅（摘要）",
+            "",
+            f"總資產（萬元）：{total_assets_input:,.0f}",
+            f"扣除總額（萬元）：{total_deductions:,.0f}",
+            f"課稅遺產淨額（萬元）：{taxable_amount:,.0f}",
+            f"預估遺產稅（萬元）：{tax_due:,.0f}",
+            "",
+            "— 扣除項目（萬元） —",
+        ]
+        for _, r in df_deductions.iterrows():
+            lines.append(f"{r['項目']}: {r['金額（萬元）']:,d}")
+        pdf_buf = generate_pdf(
+            content="\n".join(lines),
+            title="AI 秒算遺產稅",
+            logo_path="logo.png",
+            footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
+        )
+        return pdf_buf.getvalue()
+
+    st.download_button(
+        "下載 PDF 摘要（萬元）",
+        data=_build_pdf_bytes(),
+        file_name="遺產稅試算_摘要_萬元.pdf",
+        mime="application/pdf",
+        use_container_width=True,
     )
 
 if __name__ == "__main__":
