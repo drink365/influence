@@ -1,20 +1,25 @@
 # pages/Tools_InsuranceStrategy.py
-# 保單策略建議（顯示以「萬元（TWD）」；USD 額外顯示等值 TWD）— 家族客戶版文案
+# 家族保單策略建議（英文檔名＋中文頁面；畫面統一以『萬元（TWD）』，USD 顯示等值）
 from __future__ import annotations
 
 import streamlit as st
 from typing import List, Dict
-from legacy_tools.modules.insurance_logic import recommend_strategies, FX_USD_TWD
+
+from legacy_tools.modules.insurance_logic import (
+    recommend_strategies,
+    FX_USD_TWD,
+)
 from legacy_tools.modules.pdf_generator import generate_pdf
 
 # ---------- 小工具 ----------
 def _tier_label(budget_wan: float, currency: str) -> str:
-    budget_in_twd_wan = budget_wan * (FX_USD_TWD if currency == "USD" else 1.0)
-    if budget_in_twd_wan >= 1000:
+    """以等值萬 TWD 判斷分級（顯示用）。"""
+    twd_wan = budget_wan * (FX_USD_TWD if currency == "USD" else 1.0)
+    if twd_wan >= 1000:
         return "高端預算"
-    if budget_in_twd_wan >= 300:
+    if twd_wan >= 300:
         return "進階預算"
-    if budget_in_twd_wan >= 100:
+    if twd_wan >= 100:
         return "標準預算"
     return "入門預算"
 
@@ -22,12 +27,22 @@ def _fmt_money_wan_twd(amount_wan: float) -> str:
     return f"{amount_wan:,.0f} 萬元"
 
 def _fmt_budget_display(budget_wan: float, currency: str) -> str:
+    """主畫面一律以『萬元（TWD）』顯示；USD 額外顯示原幣參考。"""
     if currency == "USD":
         twd_equiv = budget_wan * FX_USD_TWD
         return f"{_fmt_money_wan_twd(twd_equiv)}（約 US${budget_wan:,.0f} 萬）"
     return _fmt_money_wan_twd(budget_wan)
 
-def _pdf_from_results(age: int, gender: str, budget_wan: float, currency: str, pay_years: int, goals: List[str], strategies: List[Dict]) -> bytes:
+def _pdf_from_results(
+    age: int,
+    gender: str,
+    budget_wan: float,
+    currency: str,
+    pay_years: int,
+    goals: List[str],
+    strategies: List[Dict],
+) -> bytes:
+    """輸出 PDF（以萬元 TWD 為主，含 logo／生成日期／頁尾）。"""
     tier = _tier_label(budget_wan, currency)
     main_budget_text = _fmt_budget_display(budget_wan, currency)
     lines: List[str] = []
@@ -49,7 +64,14 @@ def _pdf_from_results(age: int, gender: str, budget_wan: float, currency: str, p
         why = s.get("why", "")
         fit = "、".join(s.get("fit", []) or [])
         desc = s.get("description", "")
-        lines += [f"{i}. {name}", f"   適用：{fit}" if fit else "   適用：", f"   觀念：{why}", f"   作法：{desc}", ""]
+        lines += [
+            f"{i}. {name}",
+            f"   適用：{fit}" if fit else "   適用：",
+            f"   觀念：{why}",
+            f"   作法：{desc}",
+            "",
+        ]
+
     pdf_buf = generate_pdf(
         content="\n".join(lines),
         title="家族保單策略建議",
@@ -59,7 +81,7 @@ def _pdf_from_results(age: int, gender: str, budget_wan: float, currency: str, p
     return pdf_buf.getvalue()
 
 # ---------- 介面 ----------
-st.set_page_config(page_title="保單策略建議｜influence", page_icon="📦", layout="wide")
+st.set_page_config(page_title="家族保單策略建議", page_icon="📦", layout="wide")
 
 st.markdown("## 📦 家族保單策略建議")
 st.caption("依您的家庭目標與預算，**即時產出專屬策略與說明**，協助預留稅源、守護家族現金流。")
@@ -76,11 +98,22 @@ with st.form("ins_form"):
         currency = st.radio("幣別（可選 USD；畫面將統一顯示為萬元）", options=["TWD", "USD"], index=0, horizontal=True)
         helper = "請輸入單位：『萬元』（例：100 = 1,000,000）"
         budget_default = 300.0 if currency == "TWD" else 10.0
-        budget = st.number_input("總預算（以『萬元』輸入）", min_value=1.0, value=budget_default, step=1.0, help=helper)
+        budget = st.number_input(
+            "總預算（以『萬元』輸入）",
+            min_value=1.0, value=budget_default, step=1.0, help=helper
+        )
 
     with c3:
-        pay_years = st.number_input("繳費年期（年）", min_value=1, max_value=30, value=10, step=1, format="%d", help="預設 10 年；最少 1 年、最多 30 年。")
-        goals = st.multiselect("家庭目標（可複選 1–3 項）", ["傳承", "退休", "醫療", "長照", "教育", "資產配置", "稅源", "企業主"], default=["傳承"])
+        pay_years = st.number_input(
+            "繳費年期（年）",
+            min_value=1, max_value=30, value=10, step=1, format="%d",
+            help="預設 10 年；最少 1 年、最多 30 年。"
+        )
+        goals = st.multiselect(
+            "家庭目標（可複選 1–3 項）",
+            ["傳承", "退休", "醫療", "長照", "教育", "資產配置", "稅源", "企業主"],
+            default=["傳承"],
+        )
 
     submitted = st.form_submit_button("✨ 產生建議")
 
@@ -88,6 +121,7 @@ if not submitted:
     st.info("請先輸入條件並按下「✨ 產生建議」。")
     st.stop()
 
+# 基本驗證
 if budget <= 0:
     st.error("請輸入有效的總預算（萬元）。")
     st.stop()
@@ -95,23 +129,25 @@ if not goals:
     st.warning("請至少選擇 1 個目標，才會有具體建議。")
     st.stop()
 
-# 引擎呼叫（輸入為『萬 <currency>』；畫面統一呈現為『萬元（TWD）』）
+# 引擎呼叫（注意使用複數參數名 goals）
 recs = recommend_strategies(
     age=int(age),
     gender=gender,
     budget=float(budget),
     currency=currency,      # 'TWD' / 'USD'
     pay_years=int(pay_years),
-    goals=goals,            # 複數
+    goals=goals,            # ✅ 正確參數名稱
 )
 
 # 分級與顯示
 tier_text = _tier_label(float(budget), currency)
 main_budget_text = _fmt_budget_display(float(budget), currency)
 
-st.markdown(f"### 📌 分級：**{tier_text}**　｜　總預算：**{main_budget_text}**　｜　年期：**{int(pay_years)} 年**")
+st.markdown(
+    f"### 📌 分級：**{tier_text}**　｜　總預算：**{main_budget_text}**　｜　年期：**{int(pay_years)} 年**"
+)
 
-# 顯示策略清單
+# 策略清單
 if not recs:
     st.info("目前條件下尚無明確策略，請調整目標或預算。")
 else:
@@ -125,6 +161,7 @@ else:
 st.markdown("---")
 colA, colB = st.columns(2)
 
+# .txt 內容
 txt_lines = [
     f"# 家族保單策略建議（{tier_text}）",
     "",
@@ -148,12 +185,20 @@ for i, s in enumerate(recs, 1):
 txt_content = "\n".join(txt_lines)
 
 with colA:
-    st.download_button("下載 .txt（萬元）", data=txt_content, file_name="家族保單策略建議_萬元.txt", mime="text/plain")
+    st.download_button(
+        "下載 .txt（萬元）",
+        data=txt_content,
+        file_name="家族保單策略建議_萬元.txt",
+        mime="text/plain",
+    )
 
 with colB:
+    pdf_bytes = _pdf_from_results(
+        int(age), gender, float(budget), currency, int(pay_years), goals, recs
+    )
     st.download_button(
         "下載 PDF（萬元）",
-        data=_pdf_from_results(int(age), gender, float(budget), currency, int(pay_years), goals, recs),
+        data=pdf_bytes,
         file_name="家族保單策略建議_萬元.pdf",
         mime="application/pdf",
     )
