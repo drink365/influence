@@ -1,257 +1,182 @@
 # pages/Tools_AssetMap.py
-# 🗺️ 傳承地圖｜完整版（六大資產＋現金流＋PDF 匯出）
-# 本版升級：PDF 自動讀取 brand.json（brand_name / slogan），顯示品牌抬頭
+# 資產地圖（全站統一單位：萬元 TWD）
+from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import io, os, json
-from datetime import date
+import plotly.express as px
 
-st.set_page_config(page_title="傳承地圖｜完整版", page_icon="🗺️", layout="wide")
-st.title("🗺️ 傳承地圖｜完整版")
-st.caption("輸入六大資產分布與現金流率，系統生成圓餅圖、現金流表與建議，並可一鍵匯出 PDF（含品牌抬頭）。")
+from legacy_tools.modules.pdf_generator import generate_pdf
 
-# ---------- 讀取 brand.json（根目錄） ----------
-def load_brand():
-    try_paths = []
-    this_dir = os.path.dirname(__file__)
-    try_paths.append(os.path.abspath(os.path.join(this_dir, "..", "brand.json")))
-    try_paths.append(os.path.abspath(os.path.join(this_dir, "..", "..", "brand.json")))
-    try_paths.append(os.path.abspath(os.path.join(os.getcwd(), "brand.json")))
-    for p in try_paths:
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-    return {"brand_name": "永傳家族辦公室", "slogan": "傳承您的影響力"}
+# ---------- 小工具 ----------
+def fmt_wan(n: float) -> str:
+    try:
+        return f"{float(n):,.0f} 萬"
+    except Exception:
+        return "—"
 
-BRAND = load_brand()
+def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8-sig")
 
-# ---------- 中文字型（有 NotoSansTC-Regular.ttf 就啟用；沒有也可用） ----------
-try:
-    import matplotlib
-    font_path = os.path.join(os.path.dirname(__file__), "..", "NotoSansTC-Regular.ttf")
-    if os.path.exists(font_path):
-        matplotlib.font_manager.fontManager.addfont(font_path)
-        plt.rcParams["font.sans-serif"] = ["Noto Sans TC"]
-        plt.rcParams["axes.unicode_minus"] = False
-except Exception:
-    pass
+# ---------- 介面設定 ----------
+st.set_page_config(page_title="資產地圖｜influence", layout="wide")
+st.markdown("## 資產地圖")
+st.caption("所有金額單位：**萬元（TWD）**。請直接輸入「萬元」。例如 500 代表 NT$5,000,000。")
 
-# ---------- 六大資產分類 ----------
-ASSET_CATEGORIES = [
-    {"key": "equity", "label": "公司股權", "default_rate": 2.0},
-    {"key": "realty", "label": "不動產", "default_rate": 2.0},
-    {"key": "financial", "label": "金融資產", "default_rate": 3.0},
-    {"key": "policy", "label": "保單", "default_rate": 2.5},
-    {"key": "overseas", "label": "海外資產", "default_rate": 2.0},
-    {"key": "others", "label": "其他資產", "default_rate": 0.5},
-]
+with st.form("asset_form"):
+    c1, c2 = st.columns(2)
 
-# ---------- 輸入區 ----------
-st.subheader("① 請輸入資產分布與現金流假設")
-cols_amt = st.columns(3)
-cols_rate = st.columns(3)
-rows = []
-for i, cat in enumerate(ASSET_CATEGORIES):
-    with cols_amt[i % 3]:
-        amt = st.number_input(cat["label"], min_value=0, value=0, step=100000, key=f"amt_{cat['key']}")
-    with cols_rate[i % 3]:
-        rate = st.number_input(f"{cat['label']} 現金流率(%)", min_value=0.0, value=float(cat["default_rate"]), step=0.1, key=f"rate_{cat['key']}")
-    cash = round(amt * rate / 100.0)
-    rows.append({"資產類別": cat["label"], "金額": amt, "現金流率(%)": rate, "年現金流": cash})
+    with c1:
+        st.markdown("### 資產（萬元）")
+        cash = st.number_input("現金 / 活存", min_value=0.0, value=100.0, step=10.0)
+        deposit = st.number_input("定存 / 外幣存款（折合新台幣）", min_value=0.0, value=200.0, step=10.0)
+        securities = st.number_input("股票 / 基金 / ETF", min_value=0.0, value=300.0, step=10.0)
+        insurance_cv = st.number_input("保單現金價值", min_value=0.0, value=150.0, step=10.0)
+        real_estate = st.number_input("不動產（淨值）", min_value=0.0, value=800.0, step=10.0)
+        business_equity = st.number_input("企業股權（估值）", min_value=0.0, value=500.0, step=10.0)
+        crypto = st.number_input("加密資產", min_value=0.0, value=0.0, step=10.0)
+        other_assets = st.number_input("其他資產", min_value=0.0, value=0.0, step=10.0)
 
-df = pd.DataFrame(rows)
-total_amt = int(df["金額"].sum())
-total_cash = int(df["年現金流"].sum())
+    with c2:
+        st.markdown("### 負債（萬元）")
+        mortgage = st.number_input("房貸餘額", min_value=0.0, value=400.0, step=10.0)
+        loans = st.number_input("信貸 / 車貸", min_value=0.0, value=50.0, step=10.0)
+        biz_loans = st.number_input("企業貸款", min_value=0.0, value=0.0, step=10.0)
+        tax_reserve = st.number_input("稅務準備（未繳之預估稅金）", min_value=0.0, value=0.0, step=10.0)
+        other_liab = st.number_input("其他負債", min_value=0.0, value=0.0, step=10.0)
+
+    submitted = st.form_submit_button("產生資產地圖")
+
+if not submitted:
+    st.info("請輸入上方數據，並按下「產生資產地圖」。所有金額均以 **萬元（TWD）** 為單位。")
+    st.stop()
+
+# ---------- 計算 ----------
+asset_items = {
+    "現金 / 活存": cash,
+    "定存 / 外幣存款（折合新台幣）": deposit,
+    "股票 / 基金 / ETF": securities,
+    "保單現金價值": insurance_cv,
+    "不動產（淨值）": real_estate,
+    "企業股權（估值）": business_equity,
+    "加密資產": crypto,
+    "其他資產": other_assets,
+}
+liab_items = {
+    "房貸餘額": mortgage,
+    "信貸 / 車貸": loans,
+    "企業貸款": biz_loans,
+    "稅務準備": tax_reserve,
+    "其他負債": other_liab,
+}
+
+df_assets = pd.DataFrame(
+    [{"項目": k, "金額（萬元）": float(v)} for k, v in asset_items.items()]
+).sort_values("金額（萬元）", ascending=False)
+df_liab = pd.DataFrame(
+    [{"項目": k, "金額（萬元）": float(v)} for k, v in liab_items.items()]
+).sort_values("金額（萬元）", ascending=False)
+
+total_assets = float(df_assets["金額（萬元）"].sum())
+total_liab = float(df_liab["金額（萬元）"].sum())
+net_worth = total_assets - total_liab
+
+# ---------- 指標摘要 ----------
+m1, m2, m3 = st.columns(3)
+m1.metric("總資產（萬元）", fmt_wan(total_assets))
+m2.metric("總負債（萬元）", fmt_wan(total_liab))
+m3.metric("淨值（萬元）", fmt_wan(net_worth))
 
 st.markdown("---")
-st.subheader("② 視覺化總覽")
 
-# ---------- 圓餅圖 ----------
-if total_amt == 0:
-    st.info("請先輸入各資產類別的金額數值。")
-else:
-    fig, ax = plt.subplots(figsize=(5,5))
-    labels = df["資產類別"].tolist()
-    values = df["金額"].tolist()
-    autopct_fmt = lambda p: f"{p:.1f}%" if p > 0 else ""
-    ax.pie(values, labels=labels, autopct=autopct_fmt, startangle=90)
-    ax.axis("equal")
-    st.pyplot(fig, use_container_width=False)
+# ---------- 配置圖與表 ----------
+col_left, col_right = st.columns([1.2, 1], gap="large")
 
-    st.markdown(f"**總資產**：NT$ {total_amt:,.0f}　｜　**預估年現金流**：NT$ {total_cash:,.0f}")
+with col_left:
+    st.markdown("### 資產配置（萬元）")
+    df_assets_nonzero = df_assets[df_assets["金額（萬元）"] > 0].copy()
+    if df_assets_nonzero.empty:
+        st.info("目前資產全為 0，請輸入數值後再產生圖表。")
+    else:
+        fig = px.pie(
+            df_assets_nonzero,
+            names="項目",
+            values="金額（萬元）",
+            hole=0.35,
+            title="資產配置比例（單位：萬元）"
+        )
+        fig.update_traces(textposition="inside", textinfo="percent+label")
+        fig.update_layout(height=480, margin=dict(t=80, b=20, l=20, r=20))
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### 現金流明細")
-    df_show = df.copy()
-    df_show["占比(%)"] = (df_show["金額"] / total_amt * 100).round(1)
-    st.dataframe(df_show, use_container_width=True)
+with col_right:
+    st.markdown("### 明細表")
+    with st.expander("資產明細（萬元）", expanded=True):
+        st.dataframe(df_assets, use_container_width=True)
+        st.download_button(
+            "下載資產 CSV（萬元）",
+            data=df_to_csv_bytes(df_assets),
+            file_name="資產明細_萬元.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with st.expander("負債明細（萬元）", expanded=True):
+        st.dataframe(df_liab, use_container_width=True)
+        st.download_button(
+            "下載負債 CSV（萬元）",
+            data=df_to_csv_bytes(df_liab),
+            file_name="負債明細_萬元.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
-# ---------- 風險偵測與建議 ----------
 st.markdown("---")
-st.subheader("③ 風險偵測與建議（自動）")
 
-def risk_checks(df: pd.DataFrame):
-    tips = []
-    if df["金額"].sum() <= 0:
-        return ["尚未輸入資產金額。"]
+# ---------- 下載 PDF 摘要（萬元） ----------
+def build_pdf_bytes() -> bytes:
+    lines = []
+    lines += [
+        "資產地圖摘要",
+        "",
+        f"總資產（萬元）：{total_assets:,.0f}",
+        f"總負債（萬元）：{total_liab:,.0f}",
+        f"淨值（萬元）：{net_worth:,.0f}",
+        "",
+        "— 資產明細（萬元） —",
+    ]
+    for _, r in df_assets.iterrows():
+        lines.append(f"{r['項目']}: {r['金額（萬元）']:,.0f}")
+    lines += ["", "— 負債明細（萬元） —"]
+    for _, r in df_liab.iterrows():
+        lines.append(f"{r['項目']}: {r['金額（萬元）']:,.0f}")
 
-    # 集中度（單一類別 >=50%）
-    df_sorted = df.sort_values("金額", ascending=False)
-    top1 = df_sorted.iloc[0]
-    if top1["金額"] / df["金額"].sum() >= 0.5:
-        tips.append(f"「{top1['資產類別']}」占比超過 50%，集中風險較高，建議規劃流動性備援。")
+    pdf_buf = generate_pdf(content="\n".join(lines), title="資產地圖")
+    return pdf_buf.getvalue()
 
-    # 流動性（不動產＋公司股權 >=50%）
-    illiq = df.set_index("資產類別").loc[["不動產", "公司股權"], "金額"].sum()
-    if illiq / df["金額"].sum() >= 0.5:
-        tips.append("不動產＋公司股權占比 ≥ 50%，可能影響稅源與緊急現金流，建議配置保單流動性或分散。")
-
-    # 整體現金流率 <1%
-    low_flow = df["年現金流"].sum() / (df["金額"].sum() + 1e-9)
-    if low_flow < 0.01:
-        tips.append("整體年化現金流率 < 1%，在通膨環境下恐不足以支撐需求，可再優化收益/結構。")
-
-    # 海外資產提醒
-    if "海外資產" in df["資產類別"].values:
-        over = df.set_index("資產類別").loc["海外資產", "金額"]
-        if over / df["金額"].sum() >= 0.3:
-            tips.append("海外資產占比 ≥ 30%，留意跨境稅務與申報（含匯回、受益人與信託安排）。")
-
-    if not tips:
-        tips.append("目前未見明顯集中或流動性風險，後續可進一步做稅源預留與保單配置模擬。")
-    return tips
-
-if total_amt > 0:
-    for t in risk_checks(df):
-        st.markdown(f"✅ {t}")
-else:
-    st.info("輸入金額後，系統會自動產生建議。")
-
-# ---------- PDF 匯出（含品牌抬頭） ----------
-st.markdown("---")
-st.subheader("④ 匯出 PDF（含圖＋表＋品牌抬頭）")
-
-def draw_pie_for_pdf(df: pd.DataFrame):
-    fig2, ax2 = plt.subplots(figsize=(5,5))
-    labels2 = df["資產類別"].tolist()
-    values2 = df["金額"].tolist()
-    autopct_fmt2 = lambda p: f"{p:.1f}%" if p > 0 else ""
-    ax2.pie(values2, labels=labels2, autopct=autopct_fmt2, startangle=90)
-    ax2.axis("equal")
-    return fig2
-
-def make_pdf(df: pd.DataFrame, total_amt: int, total_cash: int, pie_fig, brand: dict):
-    """以 reportlab 產生 PDF（含品牌抬頭、圓餅圖與表格）"""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import Table, TableStyle, SimpleDocTemplate, Paragraph, Spacer, Image
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib import colors
-    from reportlab.lib.units import cm
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        topMargin=1.5*cm, bottomMargin=1.2*cm, leftMargin=1.5*cm, rightMargin=1.5*cm
-    )
-    styles = getSampleStyleSheet()
-
-    # 標題樣式
-    brand_style = ParagraphStyle(
-        "BrandHead", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=20, leading=24, spaceAfter=4
-    )
-    slogan_style = ParagraphStyle(
-        "Slogan", parent=styles["Normal"], fontName="Helvetica", fontSize=11, textColor=colors.grey, spaceAfter=10
-    )
-
-    story = []
-    brand_name = brand.get("brand_name", "永傳家族辦公室")
-    slogan = brand.get("slogan", "傳承您的影響力")
-
-    story.append(Paragraph(brand_name, brand_style))
-    story.append(Paragraph(slogan, slogan_style))
-    story.append(Paragraph("傳承地圖（概覽報告）", styles["Title"]))
-    story.append(Paragraph(f"產出日期：{date.today().isoformat()}", styles["Normal"]))
-    story.append(Spacer(1, 0.5*cm))
-
-    # 總覽數字
-    story.append(Paragraph(f"<b>總資產：</b> NT$ {total_amt:,.0f}　｜　<b>預估年現金流：</b> NT$ {total_cash:,.0f}", styles["Heading3"]))
-    story.append(Spacer(1, 0.3*cm))
-
-    # 圓餅圖存為圖片插入
-    img_buf = io.BytesIO()
-    pie_fig.savefig(img_buf, format="png", bbox_inches="tight", dpi=200)
-    img_buf.seek(0)
-    story.append(Image(img_buf, width=12*cm, height=12*cm))
-    story.append(Spacer(1, 0.3*cm))
-
-    # 表格
-    tbl_data = [["資產類別", "金額", "占比(%)", "現金流率(%)", "年現金流"]]
-    df_tab = df.copy()
-    df_tab["占比(%)"] = (df_tab["金額"] / (total_amt or 1) * 100).round(1)
-    for _, r in df_tab.iterrows():
-        tbl_data.append([
-            r["資產類別"],
-            f"{int(r['金額']):,}",
-            f"{r['占比(%)']:.1f}",
-            f"{r['現金流率(%)']:.2f}",
-            f"{int(r['年現金流']):,}"
-        ])
-    tbl = Table(tbl_data, hAlign="LEFT", colWidths=[3.5*cm, 3.2*cm, 2.5*cm, 3.0*cm, 3.2*cm])
-    tbl.setStyle(TableStyle([
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.grey),
-        ("TOPPADDING", (0,0), (-1,-1), 6),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
-    ]))
-    story.append(tbl)
-    story.append(Spacer(1, 0.4*cm))
-
-    # 建議
-    tips = []
-    # 重用畫面上的邏輯（簡化重寫）
-    df_tmp = df.copy()
-    if df_tmp["金額"].sum() > 0:
-        df_sorted = df_tmp.sort_values("金額", ascending=False)
-        top1 = df_sorted.iloc[0]
-        if top1["金額"] / df_tmp["金額"].sum() >= 0.5:
-            tips.append(f"「{top1['資產類別']}」占比超過 50%，集中風險較高，建議規劃流動性備援。")
-        illiq = df_tmp.set_index("資產類別").loc[["不動產", "公司股權"], "金額"].sum()
-        if illiq / df_tmp["金額"].sum() >= 0.5:
-            tips.append("不動產＋公司股權占比 ≥ 50%，可能影響稅源與緊急現金流，建議配置保單流動性或分散。")
-        low_flow = df_tmp["年現金流"].sum() / (df_tmp["金額"].sum() + 1e-9)
-        if low_flow < 0.01:
-            tips.append("整體年化現金流率 < 1%，在通膨環境下恐不足以支撐需求，可再優化收益/結構。")
-        if "海外資產" in df_tmp["資產類別"].values:
-            over = df_tmp.set_index("資產類別").loc["海外資產", "金額"]
-            if over / df_tmp["金額"].sum() >= 0.3:
-                tips.append("海外資產占比 ≥ 30%，留意跨境稅務與申報（含匯回、受益人與信託安排）。")
-    if not tips:
-        tips.append("目前未見明顯集中或流動性風險，後續可進一步做稅源預留與保單配置模擬。")
-
-    from reportlab.platypus import Paragraph
-    story.append(Paragraph("<b>系統建議：</b>", styles["Heading3"]))
-    for t in tips:
-        story.append(Paragraph(f"• {t}", styles["Normal"]))
-
-    doc.build(story)
-    pdf_data = buf.getvalue()
-    buf.close()
-    return pdf_data
-
-if total_amt > 0:
-    fig_pdf = draw_pie_for_pdf(df)
-    pdf_bytes = make_pdf(df, total_amt, total_cash, fig_pdf, BRAND)
+cA, cB = st.columns([1, 1])
+with cA:
     st.download_button(
-        "⬇️ 下載 PDF 報告（含品牌抬頭）",
-        data=pdf_bytes,
-        file_name=f"傳承地圖_{date.today().isoformat()}.pdf",
+        "下載 PDF 摘要（萬元）",
+        data=build_pdf_bytes(),
+        file_name="資產地圖_摘要_萬元.pdf",
         mime="application/pdf",
+        use_container_width=True,
     )
-else:
-    st.warning("請先輸入資產金額，再匯出 PDF。")
+with cB:
+    # 合併表格 CSV（資產/負債）方便一次下載
+    df_all = pd.concat(
+        [
+            df_assets.assign(類別="資產"),
+            df_liab.assign(類別="負債"),
+        ],
+        ignore_index=True,
+    )
+    st.download_button(
+        "下載總表 CSV（萬元）",
+        data=df_to_csv_bytes(df_all[["類別", "項目", "金額（萬元）"]]),
+        file_name="資產地圖_總表_萬元.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+st.caption("說明：本頁所有數值皆以 **萬元（TWD）** 為單位；外幣請先折合新台幣後再填入。")
