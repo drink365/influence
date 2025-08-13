@@ -1,94 +1,117 @@
-import os
+# app.py
+# 主應用入口：包含「響應式 Logo」顯示（桌機約 220px，手機自動縮小）
+from __future__ import annotations
+
+import base64
+from pathlib import Path
+import json
 import streamlit as st
-from nav_shim import goto
 
-st.set_page_config(page_title="influence｜數位傳承顧問", page_icon="✨", layout="wide")
+# -------------------------
+# 讀取品牌設定（可選）
+# -------------------------
+def load_brand():
+    """
+    讀取 brand.json（若有），回傳 dict：
+    {
+        "app_title": "influence",
+        "app_subtitle": "家族傳承與保單策略助手",
+        "logo_paths": ["logo.png", "assets/logo.png", "static/logo.png"]
+    }
+    """
+    defaults = {
+        "app_title": "influence",
+        "app_subtitle": "家族傳承與保單策略助手",
+        "logo_paths": ["logo.png", "assets/logo.png", "static/logo.png", "images/logo.png"],
+    }
+    for p in [Path("brand.json"), Path("config/brand.json"), Path("assets/brand.json")]:
+        if p.exists():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                # 合併預設
+                for k, v in defaults.items():
+                    data.setdefault(k, v)
+                return data
+            except Exception:
+                return defaults
+    return defaults
 
-# ---- 找 Logo（支援多檔名）----
-def find_logo():
-    candidates = [
-        "logo.png", "logo.jpg", "logo.jpeg",
-        "logo-橫式彩色.png",
-        os.path.join("pages", "logo.png"), os.path.join("pages", "logo.jpg")
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
+BRAND = load_brand()
+
+# -------------------------
+# Page Config
+# -------------------------
+st.set_page_config(
+    page_title=f"{BRAND.get('app_title','influence')}",
+    page_icon="🧭",
+    layout="wide",
+)
+
+# -------------------------
+# 找出 Logo 並轉成 base64
+# -------------------------
+def find_logo_bytes(paths) -> bytes | None:
+    for p in paths:
+        fp = Path(p)
+        if fp.exists() and fp.is_file():
+            try:
+                return fp.read_bytes()
+            except Exception:
+                continue
     return None
 
-logo = find_logo()
+def to_base64_src(img_bytes: bytes) -> str:
+    b64 = base64.b64encode(img_bytes).decode("utf-8")
+    return f"data:image/png;base64,{b64}"
 
-# ---- 樣式 ----
-st.markdown(
-    """
-    <style>
-    .hero {
-        padding: 18px 20px 8px 20px;
-        border-radius: 18px;
-        background: #fff;
-        border: 1px solid #eee;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.06);
-    }
-    .cards {display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; margin-top: 12px;}
-    .card {
-        padding: 18px; border-radius: 16px;
-        border: 1px solid #eee; background: #ffffff;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.06);
-        transition: transform .08s ease, box-shadow .08s ease;
-    }
-    .card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.08);}
-    .card h3 { margin: 0 0 6px 0; font-size: 1.15rem;}
-    .muted { color: #666; font-size: 0.95rem; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+logo_bytes = find_logo_bytes(BRAND.get("logo_paths", []))
+logo_src = to_base64_src(logo_bytes) if logo_bytes else None
 
-# ---- Hero 區塊（Logo + 說明）----
-if logo:
-    st.image(logo, use_container_width=True)
-else:
-    st.title("✨ influence｜數位傳承顧問")
-
-st.markdown('<div class="hero">', unsafe_allow_html=True)
-st.write(
-    """
-**歡迎回來！** 請從下方卡片或左側選單進入功能頁：
-
-- **顧問工具庫**：遺產稅試算、傳承地圖、保單策略  
-- **AI 行銷助手 Pro**：讀取 brand.json 的金句與 Hashtag，並可匯出 PDF  
-- **預約**（選用）：若未設定 Secrets，寄信功能會停用但不影響其他頁面
+# -------------------------
+# 版頭：左 logo、右標題
+# -------------------------
+HEADER_CSS = """
+<style>
+.app-header { display:flex; align-items:center; gap: 16px; margin-bottom: 12px; }
+.app-logo img { display:block; width: 220px; height: auto; }           /* 桌機 */
+@media (max-width: 1024px) {
+  .app-logo img { width: 180px; }                                      /* 平板 */
+}
+@media (max-width: 640px) {
+  .app-logo img { width: 140px; }                                      /* 手機 */
+}
+.app-title { line-height:1.2; }
+.app-title h1 { margin: 0; font-size: 1.8rem; }
+.app-title p  { margin: 4px 0 0 0; color: #666; }
+hr.hr-thin { border: none; border-top: 1px solid #eee; margin: 8px 0 20px 0; }
+</style>
 """
-)
-st.markdown('</div>', unsafe_allow_html=True)
 
-# ---- 快速卡片 ----
-st.markdown('<div class="cards">', unsafe_allow_html=True)
+st.markdown(HEADER_CSS, unsafe_allow_html=True)
 
-# 卡 1：顧問工具庫
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("### 🧰 顧問工具庫")
-st.write("遺產稅試算｜傳承地圖｜保單策略。將專業轉化為清楚的成交素材。")
-if st.button("打開工具庫"):
-    goto(st, "pages/0_Tools.py")
-st.markdown('</div>', unsafe_allow_html=True)
+col_logo, col_title = st.columns([1, 5], gap="small")
+with col_logo:
+    if logo_src:
+        st.markdown(f"<div class='app-logo'><img src='{logo_src}' alt='logo'></div>", unsafe_allow_html=True)
+    else:
+        # 找不到 logo 時不報錯，只顯示預設 emoji
+        st.markdown("<div class='app-logo'>🏷️</div>", unsafe_allow_html=True)
 
-# 卡 2：AI 行銷助手 Pro
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("### 🪄 AI 行銷助手 Pro")
-st.write("讀 brand.json｜可輸出 PDF。快速產出 FB/LINE/演講開場文案。")
-if st.button("進入 AI 助手"):
-    goto(st, "pages/0_AI_Copilot_Pro.py")
-st.markdown('</div>', unsafe_allow_html=True)
+with col_title:
+    st.markdown(
+        f"""
+        <div class='app-title'>
+          <h1>{BRAND.get('app_title','influence')}</h1>
+          <p>{BRAND.get('app_subtitle','家族傳承與保單策略助手')}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# 卡 3：預約（選用）
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown("### 📅 預約（選用）")
-st.write("未設定 Secrets 時，頁面可開但寄信會停用。")
-if st.button("開啟預約頁"):
-    goto(st, "pages/4_Booking.py")
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("<hr class='hr-thin' />", unsafe_allow_html=True)
 
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.caption("提示：PDF 會自動套用 brand.json 的品牌抬頭與 NotoSansTC 中文字型（若根目錄有 logo / qrcode 也會加入）。")
+# -------------------------
+# 導覽（可依你現有的多頁設計調整）
+# -------------------------
+st.write("歡迎使用。請從左側選單進入各工具頁（如：AI Copilot Pro、保單策略建議、遺產稅試算…）。")
+st.caption("提示：Logo 尺寸已自動響應式調整。若需更小，請在 app.py 中修改 CSS 的寬度。")
