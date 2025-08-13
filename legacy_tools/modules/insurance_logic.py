@@ -1,243 +1,198 @@
-# legacy_tools/modules/insurance_logic.py
-# 保單策略引擎（同時支援新/舊呼叫；中性用詞；單位自動判斷）
-# 新版：recommend_strategies(age, gender, budget, currency, pay_years, goals)
-# 舊版：recommend_strategies(goal=..., budget=..., years=..., currency='TWD')
+# pages/Tools_InsuranceStrategy.py
+# 保單策略建議（新版介面）
+# - 幣別：TWD / USD
+# - 預算：總預算（單位：萬 <幣別>）
+# - 繳費年期：預設 10 年、最少 1、最多 30
+# - 分級：以「萬TWD」換算後套用 高端/進階/標準/入門
+# - 產出：策略清單 + PDF 摘要可下載
+
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import List, Dict, Any, Tuple
 
-# -------- 幣別只接受 TWD / USD --------
-def _normalize_currency(cur: str | None) -> Tuple[str, str]:
-    c = (cur or "TWD").upper()
-    if c not in ("TWD", "USD"):
-        c = "TWD"
-    symbol = "NT$" if c == "TWD" else "US$"
-    return c, symbol
+import streamlit as st
+from typing import List, Dict
 
-@dataclass
-class Profile:
-    age: int
-    gender: str
-    # 分級改採「總預算（萬元）」；舊頁面會自動從 yearly*years 推回來
-    total_budget_wan: float
-    currency: str          # TWD / USD
-    currency_symbol: str   # NT$ / US$
-    pay_years: int         # 繳費年期（年）
-    goals: List[str]       # 目標（中文關鍵字）
+from legacy_tools.modules.insurance_logic import (
+    recommend_strategies,
+    FX_USD_TWD,  # 取得匯率常數，讓分級顯示與引擎一致
+)
+from legacy_tools.modules.pdf_generator import generate_pdf
 
-# -------- 單位與等級 --------
-def _infer_total_budget_wan_from_legacy(yearly_budget: float, years: int) -> float:
+
+# ---------- 小工具 ----------
+def _tier_label(budget_wan: float, currency: str) -> str:
     """
-    舊頁面傳進來常是每年預算（可能是「千」）＋年期。
-    規則：
-      - 若 yearly * years <= 50,000，視為「千」單位 → 先乘年數，再 /100 轉換成「萬元」。
-        例：3,000 x 5 = 15,000（千）→ 15,000 / 100 = 150（萬元）
-      - 否則視為已是「萬元」單位：total_wan = yearly * years
+    預算分級標籤（顯示用）
+    - 先把「萬 <currency>」換算成「萬 TWD」，再判斷級距
     """
-    total = float(yearly_budget) * max(int(years), 1)
-    if total <= 50000:  # 典型：3000 x 5 = 15000 -> 視為千
-        return total / 100.0
-    return total
+    budget_in_twd_wan = budget_wan * (FX_USD_TWD if currency == "USD" else 1.0)
+    if budget_in_twd_wan >= 1000:
+        return "高端預算"
+    if budget_in_twd_wan >= 300:
+        return "進階預算"
+    if budget_in_twd_wan >= 100:
+        return "標準預算"
+    return "入門預算"
 
-def _tier(total_budget_wan: float) -> str:
-    """
-    預算層級（單位：萬元）
-    - 高端：≥ 1000 萬
-    - 進階：300–999 萬
-    - 標準：100–299 萬
-    - 起步：< 100 萬
-    """
-    if total_budget_wan >= 1000:
-        return "高端"
-    if total_budget_wan >= 300:
-        return "進階"
-    if total_budget_wan >= 100:
-        return "標準"
-    return "起步"
 
-def _has(goal_keys: List[str], *needles: str) -> bool:
-    g = "｜".join(goal_keys or [])
-    return any(n in g for n in needles)
-
-def _age_band(age: int) -> str:
-    if age < 35:
-        return "年輕族"
-    if age <= 55:
-        return "壯年族"
-    if age <= 70:
-        return "熟年族"
-    return "高齡族"
-
-def _fmt_amt_wan(amount_wan: float, symbol: str) -> str:
+def _fmt_money_wan(amount_wan: float, currency: str) -> str:
+    symbol = "NT$" if currency == "TWD" else "US$"
     return f"{symbol}{amount_wan:,.0f}萬"
 
-# -------- 基礎模組 --------
-def _base_set(p: Profile) -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
-    # 醫療/長照
-    if _has(p.goals, "醫療", "長照", "保障"):
-        items.append({
-            "name": "醫療/長照保障模組",
-            "why": "重大醫療與長照是家庭現金流風險的來源，先把底層保障補齊。",
-            "fit": [p.gender, _age_band(p.age), "風險敏感族"],
-            "description": (
-                "以實支實付醫療＋長照日額為主；預算較高可加重大疾病或失能扶助。"
-                f" 建議先預留 {_fmt_amt_wan(min(p.total_budget_wan, 100), p.currency_symbol)} 於保障模組。"
-            )
-        })
-    # 基礎壽險
-    if _has(p.goals, "保障", "家庭保障", "稅源", "傳承"):
-        items.append({
-            "name": "基礎壽險模組（定壽/終身壽險）",
-            "why": "以有效率的方式建立『萬一』保額，守住家庭與企業的基本盤。",
-            "fit": [_age_band(p.age), "家庭責任族"],
-            "description": (
-                "年輕/負債期以定期壽險放大保額；資產型客戶以終身壽險作為傳承底層。"
-                f" 繳費期 {p.pay_years} 年；保額依現金流及負債動態規劃。"
-            )
-        })
-    return items
 
-# -------- 引擎 --------
-def _engine(p: Profile) -> List[Dict[str, Any]]:
-    res: List[Dict[str, Any]] = []
-    tier = _tier(p.total_budget_wan)
+def _pdf_from_results(
+    age: int,
+    gender: str,
+    budget_wan: float,
+    currency: str,
+    pay_years: int,
+    goals: List[str],
+    strategies: List[Dict],
+) -> bytes:
+    """把摘要與策略清單組成 PDF 文字，呼叫共用引擎."""
+    tier = _tier_label(budget_wan, currency)
+    lines: List[str] = []
+    lines += [
+        "保單策略建議摘要",
+        "",
+        f"年齡：{age}",
+        f"性別：{gender}",
+        f"總預算：{_fmt_money_wan(budget_wan, currency)}",
+        f"繳費年期：{pay_years} 年",
+        f"幣別：{currency}",
+        f"分級：{tier}",
+        f"目標：{('、'.join(goals)) if goals else '（未填）'}",
+        "",
+        "—— 策略清單 ——",
+        "",
+    ]
+    for i, s in enumerate(strategies, 1):
+        name = s.get("name", "")
+        why = s.get("why", "")
+        fit = "、".join(s.get("fit", []) or [])
+        desc = s.get("description", "")
+        lines += [
+            f"{i}. {name}",
+            f"   適用：{fit}" if fit else "   適用：",
+            f"   觀念：{why}",
+            f"   作法：{desc}",
+            "",
+        ]
 
-    # 1) 積累/傳承
-    if _has(p.goals, "傳承", "資產配置", "現金流", "稅源", "企業主", "家族"):
-        if tier in ("進階", "高端"):
-            res.append({
-                "name": "增額終身壽險（高現金價值型）",
-                "why": "穩定累積保單現金價值，提供保單借款與傳承效率；可作為稅源或企業傳承準備。",
-                "fit": [p.gender, _age_band(p.age), f"{tier}預算"],
-                "description": (
-                    f"建議以 {p.pay_years} 年繳設計增額結構，前3–5年加保；"
-                    "後期可利用保單借款做資金調度或作為稅源預留。"
-                )
-            })
-        else:
-            res.append({
-                "name": "分紅型終身壽險（穩健型）",
-                "why": "兼顧保障與分紅，保費壓力較低，適合起步或逐步加碼。",
-                "fit": [_age_band(p.age), f"{tier}預算"],
-                "description": f"{p.pay_years} 年繳為主；預算成長後可追加繳或加保。"
-            })
+    pdf_buf = generate_pdf(content="\n".join(lines), title="保單策略建議")
+    return pdf_buf.getvalue()
 
-    # 2) 退休/年金現金流
-    if _has(p.goals, "退休", "年金", "現金流"):
-        # 文案用「總預算-100萬」作年金桶的示意切分
-        bucket = max(p.total_budget_wan - 100, 0)
-        res.append({
-            "name": "年金/變額年金（退休現金流）",
-            "why": "把一次資金換成長期現金流，降低長壽風險與市場波動壓力。",
-            "fit": [_age_band(p.age), "現金流導向"],
-            "description": (
-                "以保證年金＋紅利機制為基礎；若可承受波動，可搭配投資連結型年金提高上限。"
-                f" 建議預留 {_fmt_amt_wan(bucket, p.currency_symbol)} 作年金桶。"
-            )
-        })
 
-    # 3) 資產保全/企業主
-    if _has(p.goals, "企業", "股權", "房地產", "稅源", "債務"):
-        res.append({
-            "name": "保單融資／資產保全（企業主專用）",
-            "why": "以保單現金價值作為備援資金；遇短期流動性或稅務缺口，可低成本借款避免被動賣資產。",
-            "fit": ["企業主", f"{tier}預算"],
-            "description": (
-                "設計保單現金價值曲線，預留稅源；視銀行融資條件規劃 LTV 與利率，"
-                "必要時搭配信託或保單質借機制。"
-            )
-        })
+# ---------- 介面 ----------
+st.set_page_config(page_title="保單策略建議｜influence", page_icon="📦", layout="wide")
+st.markdown("## 📦 保單策略建議")
+st.caption("輸入基本條件與目標，系統依預算分級（高端/進階/標準/入門）提供策略方向。")
 
-    # 4) 教育
-    if _has(p.goals, "教育", "子女", "學費"):
-        res.append({
-            "name": "教育金保單（含增額/年金）",
-            "why": "把未來的大額學費變成可預期的現金流。",
-            "fit": ["父母族", _age_band(p.age)],
-            "description": "以增額終身或年金型做時間分層，設定領取節點與金額；保額與保費隨學齡滾動調整。"
-        })
+with st.form("ins_form"):
+    c1, c2, c3 = st.columns([1, 1, 1])
 
-    # 5) 起步／標準預算
-    if tier in ("起步", "標準"):
-        res.append({
-            "name": "短年期定壽＋醫療附約（起步組合）",
-            "why": "有限預算下，先以最低成本完成基本保障，之後再升級。",
-            "fit": [_age_band(p.age), f"{tier}預算"],
-            "description": f"定期壽險 {p.pay_years} 年繳；醫療以實支實付為主。未來預算增加再轉增額終身。"
-        })
+    with c1:
+        age = st.number_input("年齡", min_value=18, max_value=85, value=45, step=1)
+        gender = st.selectbox("性別", ["不分", "女性", "男性"], index=0)
 
-    # 6) 高齡或長照需求
-    if p.age >= 60 or _has(p.goals, "長照"):
-        res.append({
-            "name": "長照/失能收入保障",
-            "why": "針對高齡風險與照護費用，提供長期現金流補位。",
-            "fit": ["熟年族/高齡族"],
-            "description": "長照日額＋失能扶助（含豁免），與退休年金搭配提高抗風險能力。"
-        })
-
-    # 7) 基礎模組補位
-    base = _base_set(p)
-    existing = {x["name"] for x in res}
-    for item in base:
-        if item["name"] not in existing:
-            res.append(item)
-
-    if not res:
-        res.append({
-            "name": "基礎保障＋增額入門",
-            "why": "從基礎保障開始，同步建立小額增額終身作為資產桶。",
-            "fit": [_age_band(p.age)],
-            "description": f"建議預算 {_fmt_amt_wan(p.total_budget_wan, p.currency_symbol)}；"
-                           "先 70% 基礎保障、30% 增額終身。"
-        })
-    return res
-
-# -------- 公開 API（同名，支援新舊兩用）--------
-def recommend_strategies(*args, **kwargs) -> List[Dict[str, Any]]:
-    """
-    新版：
-        recommend_strategies(age, gender, budget, currency, pay_years, goals)
-        - 這裡的 budget 視為「總預算（萬元）」；若你傳的是每年預算，請先自行乘上年期。
-    舊版（相容）：
-        recommend_strategies(goal=..., budget=..., years=..., currency='TWD')
-        - 會把 budget*years 當作總額；若總額 <= 50,000，視為「千」單位，自動 /100 轉為「萬元」。
-    """
-    # 舊版關鍵字：goal / budget / years
-    if "goal" in kwargs and "budget" in kwargs and "years" in kwargs and not args:
-        goal = kwargs.get("goal") or ""
-        yearly = float(kwargs.get("budget") or 0)
-        years = int(kwargs.get("years") or 1)
-        currency_code, symbol = _normalize_currency(kwargs.get("currency", "TWD"))
-        total_wan = _infer_total_budget_wan_from_legacy(yearly, years)
-
-        p = Profile(
-            age=45, gender="不分",
-            total_budget_wan=total_wan,
-            currency=currency_code, currency_symbol=symbol,
-            pay_years=years, goals=[goal] if isinstance(goal, str) else (goal or []),
+    with c2:
+        currency = st.radio("幣別", options=["TWD", "USD"], index=0, horizontal=True)
+        helper = "例：100 = NT$1,000,000" if currency == "TWD" else "例：10 = US$100,000"
+        budget = st.number_input(
+            "總預算（萬）",
+            min_value=1.0,
+            value=300.0 if currency == "TWD" else 10.0,
+            step=1.0,
+            help=helper,
         )
-        return _engine(p)
 
-    # 新版位置參數/關鍵字
-    if len(args) >= 6:
-        age, gender, budget_total_wan, currency_in, pay_years, goals = args[:6]
-    else:
-        age = kwargs.get("age", 45)
-        gender = kwargs.get("gender", "不分")
-        budget_total_wan = float(kwargs.get("budget", 0))   # 這裡的 budget 視為總額（萬元）
-        currency_in = kwargs.get("currency", "TWD")
-        pay_years = kwargs.get("pay_years", 10)
-        goals = kwargs.get("goals", [])
+    with c3:
+        pay_years = st.number_input(
+            "繳費年期（年）",
+            min_value=1,
+            max_value=30,
+            value=10,
+            step=1,
+            help="預設 10 年；最少 1 年、最多 30 年。",
+        )
+        goals = st.multiselect(
+            "目標（可複選 1–3 項）",
+            ["傳承", "退休", "醫療", "長照", "教育", "資產配置", "稅源", "企業主"],
+            default=["傳承"],
+            help="建議先選 1–2 個最重要的目標。",
+        )
 
-    currency_code, symbol = _normalize_currency(str(currency_in))
-    goals = goals if isinstance(goals, list) else [str(goals)]
+    submitted = st.form_submit_button("✨ 產生建議")
 
-    p = Profile(
-        age=int(age), gender=str(gender),
-        total_budget_wan=float(budget_total_wan),
-        currency=currency_code, currency_symbol=symbol,
-        pay_years=int(pay_years),
-        goals=[str(g) for g in goals],
+if not submitted:
+    st.info("請先輸入條件並按下「✨ 產生建議」。")
+    st.stop()
+
+# 驗證
+if budget <= 0:
+    st.error("請輸入有效的總預算（萬）。")
+    st.stop()
+
+if not goals:
+    st.warning("請至少選擇 1 個目標，才會有具體建議。")
+    st.stop()
+
+# 呼叫策略引擎（新版 API）
+recs = recommend_strategies(
+    age=age,
+    gender=gender,
+    budget=float(budget),         # 總預算（萬 <currency>）
+    currency=currency,            # 'TWD' / 'USD'
+    pay_years=int(pay_years),
+    goals=goals,
+)
+
+# 分級標籤
+tier_text = _tier_label(budget, currency)
+st.markdown(f"### 📌 分級：**{tier_text}**　｜　總預算：**{_fmt_money_wan(budget, currency)}**　｜　年期：**{pay_years}年**")
+
+# 顯示策略清單
+if not recs:
+    st.info("目前條件下尚無明確策略，請調整目標或提高預算。")
+else:
+    for i, s in enumerate(recs, 1):
+        with st.expander(f"{i}. {s.get('name','（未命名策略）')}"):
+            st.markdown(f"**適用對象：** {'、'.join(s.get('fit', []) or [])}")
+            st.markdown(f"**策略觀念：** {s.get('why','')}")
+            st.markdown(f"**實作作法：** {s.get('description','')}")
+
+# 下載區（TXT / PDF）
+st.markdown("---")
+colA, colB = st.columns(2)
+
+# TXT
+txt_lines = [f"# 保單策略建議（{tier_text}）", ""]
+txt_lines += [f"- 年齡：{age}", f"- 性別：{gender}", f"- 總預算：{_fmt_money_wan(budget, currency)}", f"- 繳費年期：{pay_years} 年", f"- 幣別：{currency}", f"- 目標：{('、'.join(goals)) if goals else '（未填）'}", "", "## 策略清單", ""]
+for i, s in enumerate(recs, 1):
+    txt_lines += [
+        f"{i}. {s.get('name','')}",
+        f"   適用：{'、'.join(s.get('fit', []) or [])}",
+        f"   觀念：{s.get('why','')}",
+        f"   作法：{s.get('description','')}",
+        "",
+    ]
+txt_content = "\n".join(txt_lines)
+
+with colA:
+    st.download_button(
+        "下載 .txt",
+        data=txt_content,
+        file_name="保單策略建議.txt",
+        mime="text/plain",
     )
-    return _engine(p)
+
+# PDF
+pdf_bytes = _pdf_from_results(age, gender, float(budget), currency, int(pay_years), goals, recs)
+with colB:
+    st.download_button(
+        "下載 PDF",
+        data=pdf_bytes,
+        file_name="保單策略建議.pdf",
+        mime="application/pdf",
+    )
+
+st.caption("提示：分級以等值新台幣門檻計算（USD 依內建匯率換算）；PDF 已套用共用品牌樣式。")
