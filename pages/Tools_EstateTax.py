@@ -1,5 +1,5 @@
 # pages/Tools_EstateTax.py
-# 家族遺產稅試算（英文檔名＋中文頁面；單位：萬元 TWD）
+# 遺產稅試算（英文檔名＋中文頁面；單位：萬元 TWD）
 from __future__ import annotations
 
 import streamlit as st
@@ -70,9 +70,9 @@ class EstateTaxCalculator:
 # 介面（中文）
 # ===============================
 def main():
-    st.set_page_config(page_title="家族遺產稅試算", layout="wide")
+    st.set_page_config(page_title="遺產稅試算", layout="wide")
 
-    st.markdown("## 🧮 家族遺產稅試算")
+    st.markdown("## 🧮 遺產稅試算")
     st.caption("用清楚的試算，**提早預留稅源**，讓傳承更從容。所有金額單位：**萬元（TWD）**。")
 
     st.markdown("### 請輸入資產與家庭資訊")
@@ -132,7 +132,7 @@ def main():
 
     def _build_pdf_bytes() -> bytes:
         lines = [
-            "家族遺產稅試算（摘要）",
+            "遺產稅試算（摘要）",
             "",
             f"總資產（萬元）：{total_assets_input:,.0f}",
             f"扣除總額（萬元）：{total_deductions:,.0f}",
@@ -146,7 +146,7 @@ def main():
 
         pdf_buf = generate_pdf(
             content="\n".join(lines),
-            title="家族遺產稅試算",
+            title="遺產稅試算",
             logo_path="logo.png",
             footer_text="永傳家族辦公室｜www.gracefo.com｜123@gracefo.com",
         )
@@ -155,7 +155,7 @@ def main():
     st.download_button(
         "下載 PDF 摘要（萬元）",
         data=_build_pdf_bytes(),
-        file_name="家族遺產稅試算_摘要_萬元.pdf",
+        file_name="遺產稅試算_摘要_萬元.pdf",
         mime="application/pdf",
         use_container_width=True,
     )
