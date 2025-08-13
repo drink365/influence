@@ -7,7 +7,7 @@ from nav_shim import goto
 st.set_page_config(page_title="顧問工具庫｜influence", page_icon="🧰", layout="wide")
 
 def find_logo():
-    for p in ["logo-橫式彩色.png", "logo.png", "logo.jpg", "logo.jpeg", os.path.join("pages","logo.png")]:
+    for p in ["logo.png", "logo.jpg", "logo.jpeg", "logo-橫式彩色.png", os.path.join("pages","logo.png")]:
         if os.path.exists(p):
             return p
     return None
@@ -17,12 +17,13 @@ logo = find_logo()
 st.markdown(
     """
     <style>
-    .grid {display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:16px;}
-    .card {padding:16px;border-radius:16px;border:1px solid #eee;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.06);}
+    .grid {display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:16px; margin-top: 6px;}
+    .card {padding:16px;border-radius:16px;border:1px solid #eee;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.06);transition: transform .08s ease, box-shadow .08s ease;}
     .card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.08);}
     .card h4{margin:0 0 6px 0;}
-    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-    .logo-small{height:32px;opacity:.9}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+    .logo-small{height:32px;opacity:.95}
+    .muted { color:#666; font-size: 0.95rem; }
     </style>
     """,
     unsafe_allow_html=True
@@ -33,8 +34,8 @@ st.markdown("<h2>🧰 顧問工具庫</h2>", unsafe_allow_html=True)
 if logo:
     st.markdown(f'<img class="logo-small" src="{logo}">', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
-st.caption("把專業變成成交力：遺產稅試算、傳承地圖、保單策略、AI 行銷助手。")
 
+st.caption("把專業變成成交力：遺產稅試算、傳承地圖、保單策略、AI 行銷助手。")
 st.markdown('<div class="grid">', unsafe_allow_html=True)
 
 # 1 遺產稅
@@ -71,4 +72,4 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---")
-st.caption("PDF 風格已統一，品牌抬頭與字型由 brand.json / NotoSansTC 控制。若根目錄有 logo / qrcode 也會自動加入 PDF。")
+st.caption("PDF 風格已統一：品牌抬頭與字型由 brand.json / NotoSansTC 控制。若根目錄有 logo / qrcode 也會自動加入 PDF。")
