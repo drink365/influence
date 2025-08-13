@@ -176,8 +176,8 @@ st.markdown("""
 <div style="background:#fffbea;border:1px solid #facc15;padding:1rem;border-radius:10px;">
   <h4 style="margin-top:0;color:#854d0e;">🔒 模式說明 & 隱私提示</h4>
   <ul style="margin:0;padding-left:1.2rem;color:#713f12;">
-    <li><b>品牌草擬（免費）</b>：僅讀取「公開節錄」知識卡（去除機密內容），輸出一般概念與基礎建議。</li>
-    <li><b>專家模式（用戶 API）</b>：需輸入您的 OpenAI API Key，將讀取「私有完整」知識卡，產出更深入且專屬的專業回覆，費用由用戶承擔。</li>
+    <li><b>品牌草擬（免費）</b>：僅輸出一般概念與基礎建議。</li>
+    <li><b>專家模式（用戶 API）</b>：需輸入您的 OpenAI API Key，將產出更深入且專屬的專業回覆，費用由用戶承擔。</li>
     <li>您的輸入與生成內容不會被儲存至伺服器，僅在本次會話中使用。</li>
     <li>請勿在免費模式輸入或貼上任何機密資訊。</li>
   </ul>
