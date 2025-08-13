@@ -199,4 +199,4 @@ if submitted:
             st.json(data)
 
         st.markdown("---")
-        st.markdown("如需立即聯繫，歡迎直接來信 **123@gracefo.com** 或前往官網 **www.gracefo.com**。")
+        st.markdown("如需立即聯繫，歡迎直接來信 123@gracefo.com 或前往官網 www.gracefo.com 。")
