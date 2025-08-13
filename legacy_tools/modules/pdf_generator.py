@@ -1,241 +1,202 @@
 # legacy_tools/modules/pdf_generator.py
-# 簡潔穩定的 PDF 產生器（繁中字型、Logo、頁首單位註記＋生成日期）
+# 專業抬頭版式 PDF 生成器（左 Logo、右標題；避免重疊）
 from __future__ import annotations
 
 import io
 import os
 import re
-from typing import Optional, Tuple
 from datetime import datetime
 
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
-from reportlab.lib import colors
+from reportlab.pdfgen import canvas as rl_canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
-# 預設字型設定
-_DEFAULT_FONT_NAME = "Helvetica"          # fallback
-_CJK_FONT_NAME = "NotoSansTC"             # 目標字型名稱
-_CJK_FONT_FILE = "NotoSansTC-Regular.ttf" # 建議放在 repo 根目錄或 pages/ 或 assets/
+# -----------------------------
+# 字型註冊：優先使用 NotoSansTC-Regular.ttf（根目錄或當前資料夾）
+# -----------------------------
+_FONT_MAIN = "NotoSansTC"
+_FONT_PATH_CANDIDATES = [
+    os.path.join(os.getcwd(), "NotoSansTC-Regular.ttf"),
+    os.path.join(os.path.dirname(__file__), "NotoSansTC-Regular.ttf"),
+]
 
-# 文字樣式
-_TITLE_FONT_SIZE = 18
-_BODY_FONT_SIZE = 12
-_UNIT_FONT_SIZE = 9
-_META_FONT_SIZE = 9         # 生成日期等小字
-_FOOTER_FONT_SIZE = 8
-
-# 版面設定
-_PAGE_MARGIN_LR = 48    # 左右邊界
-_PAGE_MARGIN_T = 56     # 上邊界
-_PAGE_MARGIN_B = 56     # 下邊界
-_LINE_HEIGHT = 18       # 文字行距（對應 12pt 字體）
-_MAX_LOGO_WIDTH = 140   # Logo 最大寬度（pt）
-
-# 預設頁首註記
-_DEFAULT_UNIT_NOTE = "本報告所有金額單位：萬元（TWD）"
-_DEFAULT_DATE_LABEL = "生成日期"           # 友善用語（取代「出具日期」）
-
-
-def _register_cjk_font() -> str:
-    """
-    嘗試註冊 NotoSansTC；找不到就使用內建 Helvetica。
-    回傳可用的 fontName。
-    """
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-
-    search_paths = [
-        _CJK_FONT_FILE,
-        os.path.join("pages", _CJK_FONT_FILE),
-        os.path.join("assets", _CJK_FONT_FILE),
-        os.path.join("static", _CJK_FONT_FILE),
-        os.path.join("fonts", _CJK_FONT_FILE),
-    ]
-    for p in search_paths:
-        if os.path.exists(p):
+def _register_fonts():
+    for p in _FONT_PATH_CANDIDATES:
+        if os.path.isfile(p):
             try:
-                pdfmetrics.registerFont(TTFont(_CJK_FONT_NAME, p))
-                return _CJK_FONT_NAME
+                pdfmetrics.registerFont(TTFont(_FONT_MAIN, p))
+                return _FONT_MAIN
             except Exception:
-                continue
-    return _DEFAULT_FONT_NAME
+                pass
+    # 回退（英文/數字正常，CJK 會缺字；但我們會移除 emoji 以避免方框）
+    return "Helvetica"
 
+_FONT_NAME = _register_fonts()
+
+# -----------------------------
+# 文字處理（移除 emoji，避免方框亂碼）
+# -----------------------------
+_EMOJI_PATTERN = re.compile(
+    "["                         # 常見 emoji 區段
+    "\U0001F300-\U0001F5FF"     # Symbols & Pictographs
+    "\U0001F600-\U0001F64F"     # Emoticons
+    "\U0001F680-\U0001F6FF"     # Transport & Map
+    "\U0001F700-\U0001F77F"
+    "\U0001F780-\U0001F7FF"
+    "\U0001F800-\U0001F8FF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FA6F"
+    "\U00002700-\U000027BF"     # Dingbats
+    "\U00002600-\U000026FF"     # Misc symbols
+    "]+",
+    flags=re.UNICODE,
+)
 
 def _sanitize_text(s: str) -> str:
-    """
-    移除常見會造成嵌字失敗的字元（包含多數 emoji、控制字元），避免 PDF 出現方框或錯位。
-    - 移除 BMP 以外的字元（大多數 emoji）
-    - 移除控制字元（除了常用換行）
-    """
     if not s:
         return ""
-    # 移除非 BMP（\U00010000 以上）
-    s = re.sub(r"[\U00010000-\U0010FFFF]", "", s)
-    # 移除控制字元（保留 \n、\r、\t）
-    s = re.sub(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]", "", s)
-    return s
+    # 移除 emoji；不顯示「已移除 emoji」等字樣，避免打擾
+    return _EMOJI_PATTERN.sub("", s)
 
-
-def _wrap_text(text: str, max_width: float, canvas_obj: canvas.Canvas, font_name: str, font_size: int) -> list:
+# -----------------------------
+# 文本換行
+# -----------------------------
+def _wrap_text(text: str, font_name: str, font_size: float, max_width: float) -> list[str]:
     """
-    簡單斷行：依據字串測寬度在 max_width 內換行。
-    備註：針對中文以字元為單位斷行，英文以空白為界會更好，不過此處以穩定簡化為主。
+    依據字寬在 max_width 內做簡單換行（保留原始換行）。
     """
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-
-    lines = []
+    lines_out: list[str] = []
     for raw_line in (text or "").splitlines():
-        line = raw_line.rstrip()
+        line = raw_line.rstrip("\n")
         if not line:
-            lines.append("")
+            lines_out.append("")
             continue
-
-        # 嘗試以空白切，兼顧中英文；不夠再用字元切
-        parts = re.split(r"(\s+)", line)  # 保留空白做黏回
+        # 逐字累積
         buf = ""
-        for part in parts:
-            test = buf + part
-            if stringWidth(test, font_name, font_size) <= max_width:
+        for ch in line:
+            test = buf + ch
+            w = pdfmetrics.stringWidth(test, font_name, font_size)
+            if w <= max_width:
                 buf = test
             else:
                 if buf:
-                    lines.append(buf)
-                # part 自己太長時，改以字元切
-                if stringWidth(part, font_name, font_size) > max_width:
-                    chunk = ""
-                    for ch in part:
-                        if stringWidth(chunk + ch, font_name, font_size) <= max_width:
-                            chunk += ch
-                        else:
-                            lines.append(chunk)
-                            chunk = ch
-                    buf = chunk
-                else:
-                    buf = part
-        if buf:
-            lines.append(buf)
-    return lines
+                    lines_out.append(buf)
+                buf = ch
+        if buf or line == "":
+            lines_out.append(buf)
+    return lines_out
 
-
-def _draw_logo(c: canvas.Canvas, logo_path: Optional[str], x: float, y: float) -> Optional[Tuple[float, float]]:
-    """
-    繪製 Logo，回傳 (實際寬, 實際高)。若失敗回傳 None。
-    """
-    if not logo_path:
-        return None
-    try:
-        img = ImageReader(logo_path)
-        iw, ih = img.getSize()
-        # 等比縮放
-        if iw > _MAX_LOGO_WIDTH:
-            scale = _MAX_LOGO_WIDTH / float(iw)
-            dw = _MAX_LOGO_WIDTH
-            dh = ih * scale
-        else:
-            dw, dh = iw, ih
-        c.drawImage(img, x, y - dh, width=dw, height=dh, preserveAspectRatio=True, mask='auto')
-        return (dw, dh)
-    except Exception:
-        return None
-
-
+# -----------------------------
+# 核心：產生 PDF
+# -----------------------------
 def generate_pdf(
     content: str,
     title: str = "報告",
-    logo_path: Optional[str] = None,
-    unit_note: Optional[str] = _DEFAULT_UNIT_NOTE,
-    footer_text: Optional[str] = None,
-    page_size=A4,
-    # 新增：生成日期（可關閉或自訂）
-    show_date: bool = True,
-    date_label: str = _DEFAULT_DATE_LABEL,
-    date_value: Optional[str] = None,     # None 則自動使用今日
-    date_format: str = "%Y-%m-%d",
+    logo_path: str | None = None,
+    footer_text: str = "",
 ) -> io.BytesIO:
     """
-    產生 PDF：
-    - content：多行文字，將依頁寬斷行
-    - title：頁首標題
-    - logo_path：品牌 Logo（可省略）
-    - unit_note：頁首右側的單位註記；預設顯示「本報告所有金額單位：萬元（TWD）」
-                 若傳入 None 或空字串，則不顯示
-    - footer_text：頁尾小字（可省略）
-    - show_date / date_label / date_value / date_format：右上角以溫和語氣顯示「生成日期」
-    - 回傳 BytesIO
+    產生單頁 A4 PDF，抬頭為「左 Logo、右標題」，避免與標題重疊。
+    參數：
+      - content: 主要文字內容（會自動換行）
+      - title: 主標題（顯示於右上）
+      - logo_path: 左上 Logo 圖檔路徑（可為 None）
+      - footer_text: 頁尾置中文字
+    回傳：BytesIO（可直接給 Streamlit download_button）
     """
+    # 頁面與邊界
+    PAGE_W, PAGE_H = A4  # 595 x 842 pt
+    M_L = 20 * mm
+    M_R = 20 * mm
+    M_T = 18 * mm
+    M_B = 18 * mm
+
+    # Header 內部參數
+    LOGO_MAX_W = 34 * mm      # Logo 最大寬
+    LOGO_MAX_H = 16 * mm      # Logo 最大高（抬頭高度）
+    TITLE_FONT = _FONT_NAME
+    TITLE_SIZE = 16
+    META_FONT_SIZE = 9
+    HEADER_GAP_Y = 6 * mm     # Header 與正文間距
+
+    # 正文字級
+    BODY_FONT = _FONT_NAME
+    BODY_SIZE = 12
+    BODY_LINE_SP = 16          # 行高（pt）
+
     buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=page_size)
-    width, height = page_size
+    c = rl_canvas.Canvas(buf, pagesize=A4)
 
-    # 字型
-    font_name = _register_cjk_font()
-    c.setTitle(_sanitize_text(title))
+    # ----------------- Header：左 Logo、右標題 -----------------
+    # Header 區域基準線（上邊界往下）
+    header_top_y = PAGE_H - M_T
+    header_bottom_y = header_top_y - LOGO_MAX_H
+    header_height = LOGO_MAX_H
 
-    # 頁首：Logo + Title + 右上角（單位註記／生成日期）
-    x = _PAGE_MARGIN_LR
-    y = height - _PAGE_MARGIN_T
+    # 1) Logo（靠左，維持等比）
+    logo_drawn_h = 0
+    if logo_path and os.path.isfile(logo_path):
+        try:
+            img = ImageReader(logo_path)
+            iw, ih = img.getSize()
+            # 依比例縮放到 LOGO_MAX_W x LOGO_MAX_H 內
+            scale = min(LOGO_MAX_W / iw, LOGO_MAX_H / ih)
+            draw_w = iw * scale
+            draw_h = ih * scale
+            x = M_L
+            y = header_top_y - draw_h  # 靠上對齊
+            c.drawImage(img, x, y, width=draw_w, height=draw_h, mask='auto')
+            logo_drawn_h = draw_h
+        except Exception:
+            logo_drawn_h = 0
 
-    # Logo（左上）
-    logo_drawn = _draw_logo(c, logo_path, x, y)
-    if logo_drawn:
-        lw, lh = logo_drawn
-        title_y = y - (lh + 8)  # Logo 下方 8pt 顯示標題
-    else:
-        title_y = y
+    # 2) 右側標題區（標題＋右上角小字）
+    c.setFont(TITLE_FONT, TITLE_SIZE)
+    safe_title = _sanitize_text(title or "報告")
 
-    # Title
-    c.setFont(font_name, _TITLE_FONT_SIZE)
-    c.setFillColor(colors.black)
-    c.drawString(x, title_y, _sanitize_text(title))
+    # 右上角 meta（單位與日期）
+    meta_right_x = PAGE_W - M_R
+    meta_start_y = header_top_y
+    c.setFont(BODY_FONT, META_FONT_SIZE)
+    unit_text = "本報告所有金額單位：萬元（TWD）"
+    date_text = f"生成日期：{datetime.now().strftime('%Y-%m-%d')}"
+    # 右對齊小字
+    c.drawRightString(meta_right_x, meta_start_y - 0, _sanitize_text(unit_text))
+    c.drawRightString(meta_right_x, meta_start_y - 12, _sanitize_text(date_text))
 
-    # 右上角：單位註記（第一行）＋ 生成日期（第二行）
-    right_x = width - _PAGE_MARGIN_LR
-    meta_y = title_y
-    if unit_note:
-        c.setFont(font_name, _UNIT_FONT_SIZE)
-        c.setFillColor(colors.HexColor("#6b7280"))  # slate-500 類似
-        unit_text = _sanitize_text(str(unit_note))
-        utw = c.stringWidth(unit_text, font_name, _UNIT_FONT_SIZE)
-        c.drawString(right_x - utw, meta_y, unit_text)
-        meta_y -= (_UNIT_FONT_SIZE + 3)  # 下一行往下
+    # 標題：放在右側，避免與 logo 重疊（標題 baseline 設在 header 中線略下）
+    title_x = PAGE_W - M_R
+    title_y = header_bottom_y + (header_height * 0.45)  # 視覺置中略下
+    c.setFont(TITLE_FONT, TITLE_SIZE)
+    c.drawRightString(title_x, title_y, safe_title)
 
-    if show_date:
-        c.setFont(font_name, _META_FONT_SIZE)
-        c.setFillColor(colors.HexColor("#6b7280"))
-        date_str = date_value or datetime.now().strftime(date_format)
-        date_text = f"{date_label}：{date_str}"
-        date_text = _sanitize_text(date_text)
-        dtw = c.stringWidth(date_text, font_name, _META_FONT_SIZE)
-        c.drawString(right_x - dtw, meta_y, date_text)
+    # 計算正文起始 Y：取 Header 及 Logo/標題區之下，再加安全間距
+    body_start_y = min(header_bottom_y, title_y - 4) - HEADER_GAP_Y
 
-    # 內容起始 Y（標題下一行再留 16pt）
-    cur_y = min(meta_y, title_y) - 16
+    # ----------------- 正文 -----------------
+    c.setFont(BODY_FONT, BODY_SIZE)
+    safe_content = _sanitize_text(content or "")
+    max_text_width = PAGE_W - M_L - M_R
+    lines = _wrap_text(safe_content, BODY_FONT, BODY_SIZE, max_text_width)
 
-    # 內容框寬度
-    content_max_w = width - _PAGE_MARGIN_LR * 2
-
-    # 內容文字
-    c.setFont(font_name, _BODY_FONT_SIZE)
-    c.setFillColor(colors.black)
-
-    lines = _wrap_text(_sanitize_text(content or ""), content_max_w, c, font_name, _BODY_FONT_SIZE)
+    cursor_y = body_start_y
     for line in lines:
-        if cur_y < _PAGE_MARGIN_B + _LINE_HEIGHT:
-            # 換頁
-            c.showPage()
-            c.setFont(font_name, _BODY_FONT_SIZE)
-            cur_y = height - _PAGE_MARGIN_T
-        c.drawString(_PAGE_MARGIN_LR, cur_y, line)
-        cur_y -= _LINE_HEIGHT
+        # 頁底保護：若超出頁面，暫時用單頁報告，超出則截斷（可擴充成多頁）
+        if cursor_y <= M_B + BODY_LINE_SP:
+            break
+        c.drawString(M_L, cursor_y, line)
+        cursor_y -= BODY_LINE_SP
 
-    # 頁尾（可選）
+    # ----------------- 頁尾 -----------------
     if footer_text:
-        c.setFont(font_name, _FOOTER_FONT_SIZE)
-        c.setFillColor(colors.HexColor("#9ca3af"))  # 淺灰
-        ft = _sanitize_text(footer_text)
-        c.drawString(_PAGE_MARGIN_LR, _PAGE_MARGIN_B - 10, ft)
+        c.setFont(BODY_FONT, 10)
+        safe_footer = _sanitize_text(footer_text)
+        c.drawCentredString(PAGE_W / 2, M_B - 6, safe_footer)
 
+    c.showPage()
     c.save()
     buf.seek(0)
     return buf
