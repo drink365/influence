@@ -2,7 +2,7 @@
 """
 Lightweight package init for legacy_tools.modules.
 
-- 不在初始化時做任何副作用匯入（避免循環依賴 / ModuleNotFoundError）
+- 不在初始化時做任何副作用匯入（避免循環依賴或 ModuleNotFoundError）
 - 提供相容別名：允許舊程式碼用 `from modules.xxx import yyy`
 """
 
