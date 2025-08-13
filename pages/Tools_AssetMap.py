@@ -1,10 +1,11 @@
 # pages/Tools_AssetMap.py
-# 資產地圖（全站統一單位：萬元 TWD）— 家族客戶版文案
+# 家族資產地圖（英文檔名＋中文頁面；單位：萬元 TWD）
 from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+
 from legacy_tools.modules.pdf_generator import generate_pdf
 
 # ---------- 小工具 ----------
@@ -18,7 +19,7 @@ def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8-sig")
 
 # ---------- 介面設定 ----------
-st.set_page_config(page_title="資產地圖｜influence", layout="wide")
+st.set_page_config(page_title="家族資產地圖", layout="wide")
 
 st.markdown("## 🗺️ 家族資產地圖")
 st.caption("把專業變成家人的安心：**3 分鐘看懂家族資產版圖**，協助您規劃現金流與傳承節奏。")
