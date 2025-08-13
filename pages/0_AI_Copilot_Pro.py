@@ -190,9 +190,7 @@ st.markdown("""
 st.markdown("""
 <div style="background:#f5f8ff;padding:1.1rem 1.25rem;border-radius:12px;border:1px solid #e2e8f0;">
   <h2 style="margin:0 0 .4rem 0;color:#0f172a;">你的專屬 AI 規劃助理，讓傳承更清楚、更從容</h2>
-  <p style="margin:0;color:#334155;">
-    用你的專業知識包與模板，產出可以直接對客戶使用的文字與簡報要點。
-  </p>
+ 
 </div>
 """, unsafe_allow_html=True)
 
